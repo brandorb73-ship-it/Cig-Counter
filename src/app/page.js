@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
-import { AlertTriangle, CheckCircle, Factory, Package, ArrowDownWideZap, Search } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Factory, Package, Zap, Search, Activity } from 'lucide-react';
 
 // Advanced Conversion Registry
 const CONVERSIONS = {
@@ -113,7 +113,7 @@ export default function AdvancedMonitor() {
             onChange={(e) => setUrl(e.target.value)}
           />
           <button onClick={sync} className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition shadow-lg shadow-blue-900/20">
-            {loading ? "Processing..." : <><ArrowDownWideZap size={18} /> Run Audit</>}
+            {loading ? "Processing..." : <><Zap size={18} /> Run Audit</>}
           </button>
         </div>
       </div>
