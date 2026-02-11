@@ -1,8 +1,8 @@
 "use client";
 import React, { useState } from 'react';
 import Papa from 'papaparse';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
-import { AlertTriangle, Factory, Package, Zap, Globe, Info, Scale } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
+import { AlertTriangle, Factory, Package, Zap, Globe, Info, Scale, List, LayoutDashboard } from 'lucide-react';
 
 const CONVERSIONS = {
   'Tobacco': 1333.33,
@@ -15,10 +15,11 @@ const CONVERSIONS = {
   }
 };
 
-export default function NationalMonitor() {
+export default function ProfessionalMonitor() {
   const [url, setUrl] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('country'); // 'country' or 'entities'
 
   const processData = (raw) => {
     const registry = {};
@@ -56,14 +57,14 @@ export default function NationalMonitor() {
     const entities = Object.values(registry).map(e => {
       const potential = [e.tobacco, e.tow, e.paper].filter(v => v > 0);
       const bottleneck = potential.length > 0 ? Math.min(...potential) : 0;
-      return { ...e, bottleneck, risk: e.actual > bottleneck * 1.1 };
+      const riskRatio = bottleneck > 0 ? (e.actual / bottleneck) : 0;
+      return { ...e, bottleneck, riskRatio };
     }).sort((a, b) => b.bottleneck - a.bottleneck);
 
-    // Country Metrics
     const countryPotential = Math.min(
       countryTotals.tobaccoKg * CONVERSIONS['Tobacco'],
-      countryTotals.towKg * (countryTotals.towKg > 0 ? CONVERSIONS['Acetate tow'] : Infinity),
-      countryTotals.paperKg * (countryTotals.paperKg > 0 ? CONVERSIONS['Cigarette paper'] : Infinity)
+      countryTotals.towKg > 0 ? countryTotals.towKg * CONVERSIONS['Acetate tow'] : Infinity,
+      countryTotals.paperKg > 0 ? countryTotals.paperKg * CONVERSIONS['Cigarette paper'] : Infinity
     );
 
     return { entities, countryTotals, countryPotential };
@@ -83,93 +84,107 @@ export default function NationalMonitor() {
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-200 p-8 font-sans">
-      <div className="max-w-7xl mx-auto mb-8 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3"><Globe className="text-blue-500" /> National Precursor Audit</h1>
-        </div>
-        <div className="flex gap-2">
-          <input className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm w-80 outline-none focus:ring-1 focus:ring-blue-500" placeholder="Google Sheet URL..." onChange={(e) => setUrl(e.target.value)} />
-          <button onClick={sync} className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition">
-            {loading ? "Syncing..." : <><Zap size={16} /> Audit Country</>}
+      {/* Header Section */}
+      <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
+        <h1 className="text-2xl font-black text-white flex items-center gap-3">
+          <Factory className="text-blue-500" /> MONITOR v3.0
+        </h1>
+        <div className="flex gap-2 w-full md:w-auto">
+          <input className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm flex-1 md:w-80 outline-none" placeholder="Paste Google Sheet URL..." onChange={(e) => setUrl(e.target.value)} />
+          <button onClick={sync} className="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition whitespace-nowrap">
+            {loading ? "Syncing..." : <><Zap size={16} /> Run Audit</>}
           </button>
         </div>
       </div>
 
       {data && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* COUNTRY SUMMARY CARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-slate-800/60 p-5 rounded-xl border border-slate-700">
-              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Tobacco Imports</p>
-              <p className="text-2xl font-mono text-blue-400">{data.countryTotals.tobaccoKg.toLocaleString()} <span className="text-sm">KGM</span></p>
-            </div>
-            <div className="bg-slate-800/60 p-5 rounded-xl border border-slate-700">
-              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">National Stick Potential</p>
-              <p className="text-2xl font-mono text-white">{Math.round(data.countryPotential).toLocaleString()}</p>
-            </div>
-            <div className="bg-slate-800/60 p-5 rounded-xl border border-slate-700">
-              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">National Stick Exports</p>
-              <p className="text-2xl font-mono text-emerald-400">{Math.round(data.countryTotals.totalExported).toLocaleString()}</p>
-            </div>
-            <div className="bg-slate-800/60 p-5 rounded-xl border border-slate-700">
-              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">National Surplus/Gap</p>
-              <p className={`text-2xl font-mono ${data.countryPotential - data.countryTotals.totalExported < 0 ? 'text-red-500' : 'text-slate-300'}`}>
-                {Math.round(data.countryPotential - data.countryTotals.totalExported).toLocaleString()}
-              </p>
-            </div>
+        <div className="max-w-7xl mx-auto">
+          {/* TABS NAVIGATION */}
+          <div className="flex gap-4 border-b border-slate-700 mb-8">
+            <button 
+              onClick={() => setActiveTab('country')}
+              className={`pb-4 px-2 flex items-center gap-2 text-sm font-bold transition ${activeTab === 'country' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <LayoutDashboard size={18} /> Country Overview
+            </button>
+            <button 
+              onClick={() => setActiveTab('entities')}
+              className={`pb-4 px-2 flex items-center gap-2 text-sm font-bold transition ${activeTab === 'entities' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <List size={18} /> Entity Rankings
+            </button>
           </div>
 
-          {/* MAIN VISUALIZATION */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-slate-800/40 p-6 rounded-2xl border border-slate-700">
-              <h3 className="text-sm font-bold mb-6 flex items-center gap-2 uppercase tracking-widest text-slate-400"><Scale size={16}/> Entity Performance (Potential vs Actual)</h3>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.entities.slice(0, 8)}>
-                    <XAxis dataKey="name" hide />
-                    <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '8px'}} />
-                    <Bar dataKey="bottleneck" name="Precursor Potential" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="actual" name="Actual Exported" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700 flex flex-col justify-center items-center text-center">
-                <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Export Utilization</h3>
-                <div className="text-5xl font-black text-blue-500 mb-2">
-                    {Math.round((data.countryTotals.totalExported / data.countryPotential) * 100) || 0}%
+          {/* TAB 1: COUNTRY CALCULATIONS */}
+          {activeTab === 'country' && (
+            <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-slate-800/60 p-6 rounded-xl border border-slate-700">
+                  <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Tobacco Imports</p>
+                  <p className="text-2xl font-mono text-blue-400">{data.countryTotals.tobaccoKg.toLocaleString()} <span className="text-sm italic text-slate-500">kg</span></p>
                 </div>
-                <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">Of the country's imported precursor potential is leaving as finished exports.</p>
-            </div>
-          </div>
+                <div className="bg-slate-800/60 p-6 rounded-xl border border-slate-700">
+                  <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Stick Potential</p>
+                  <p className="text-2xl font-mono">{Math.round(data.countryPotential).toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-800/60 p-6 rounded-xl border border-slate-700">
+                  <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Stick Exports</p>
+                  <p className="text-2xl font-mono text-emerald-400">{Math.round(data.countryTotals.totalExported).toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-800/60 p-6 rounded-xl border border-slate-700">
+                  <p className="text-slate-500 text-[10px] font-bold uppercase mb-1">Country Balance</p>
+                  <p className={`text-2xl font-mono ${data.countryPotential - data.countryTotals.totalExported < 0 ? 'text-red-500' : 'text-slate-300'}`}>
+                    {Math.round(data.countryPotential - data.countryTotals.totalExported).toLocaleString()}
+                  </p>
+                </div>
+              </div>
 
-          {/* FORENSIC GUIDE SECTION */}
-          <div className="bg-blue-900/10 border border-blue-500/20 p-8 rounded-3xl">
-            <h2 className="text-xl font-bold text-blue-400 mb-4 flex items-center gap-2"><Info /> Auditor's Conclusion & Guide</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm leading-relaxed text-slate-300">
-              <div className="space-y-4">
-                <p>
-                  <strong className="text-white block mb-1 underline decoration-blue-500/50">1. Precursor-to-Stick Conclusion</strong>
-                  The country imported <strong>{data.countryTotals.tobaccoKg.toLocaleString()} kg</strong> of Tobacco. At a standard 0.75g per stick, this provides a national manufacturing ceiling of <strong>{Math.round(data.countryTotals.tobaccoKg * 1333.33).toLocaleString()} sticks</strong>. 
+              <div className="bg-blue-900/10 border border-blue-500/20 p-8 rounded-2xl">
+                <h3 className="text-lg font-bold text-blue-400 mb-4 flex items-center gap-2"><Info size={20}/> Forensic Conclusion</h3>
+                <p className="text-slate-300 leading-relaxed mb-4">
+                   The country imported enough raw material to manufacture <strong>{Math.round(data.countryPotential).toLocaleString()}</strong> sticks. 
+                   Official records show <strong>{Math.round(data.countryTotals.totalExported).toLocaleString()}</strong> sticks left the country.
                 </p>
-                <p>
-                  <strong className="text-white block mb-1 underline decoration-blue-500/50">2. National Balance Analysis</strong>
-                  If "National Stick Exports" ({Math.round(data.countryTotals.totalExported).toLocaleString()}) is significantly <strong>lower</strong> than "National Potential," the remaining volume is either consumed locally or represents stockpiled precursors. 
-                </p>
-              </div>
-              <div className="space-y-4">
-                <p>
-                  <strong className="text-white block mb-1 underline decoration-blue-500/50">3. Red Flag Warning</strong>
-                  If "National Stick Exports" is <strong>higher</strong> than "National Potential" (Utilization &gt; 100%), the country is exporting more than it can legally manufacture from its reported imports. This is a primary indicator of <strong>illicit precursor sourcing</strong> or under-reported imports.
-                </p>
-                <p>
-                  <strong className="text-white block mb-1 underline decoration-blue-500/50">4. Discrepancy Guide</strong>
-                  Always verify <strong>Unit Discrepancies</strong> in the table below. A single entity using an unrecognized unit (like "BAG" or "Tonne") can skew the national total by millions of sticks.
-                </p>
+                <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 text-sm italic">
+                   {data.countryPotential - data.countryTotals.totalExported < 0 
+                     ? "⚠️ ALERT: The country is exporting MORE than its imported raw material allows. This indicates illicit precursor sourcing." 
+                     : "✅ VALID: Exports are within the bounds of imported raw materials."}
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* TAB 2: ENTITY CALCULATIONS */}
+          {activeTab === 'entities' && (
+            <div className="bg-slate-800/40 rounded-2xl border border-slate-700 overflow-hidden animate-in fade-in duration-500">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-900/50 text-slate-400 uppercase text-[10px] tracking-widest">
+                  <tr>
+                    <th className="px-6 py-4">Entity Name</th>
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-right">Potential Sticks</th>
+                    <th className="px-6 py-4 text-right">Actual Exports</th>
+                    <th className="px-6 py-4 text-right">Discrepancy</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/50">
+                  {data.entities.map((row, i) => (
+                    <tr key={i} className="hover:bg-slate-700/20 transition">
+                      <td className="px-6 py-4 font-semibold text-slate-100">{row.name}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${row.riskRatio > 1.1 ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'}`}>
+                          {row.riskRatio > 1.1 ? 'HIGH RISK' : 'LOW RISK'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right font-mono">{Math.round(row.bottleneck).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-mono text-emerald-400">{Math.round(row.actual).toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-mono text-slate-400">{Math.round(row.bottleneck - row.actual).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
