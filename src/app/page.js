@@ -74,29 +74,38 @@ export default function ProfessionalMonitor() {
     if (!url) return alert("Please paste a URL first");
     
     setLoading(true);
-    setData(null); // Wipes the screen entirely
+    setData(null); 
 
-    // Force Google to treat this as a unique, non-cached request
-    const baseUrl = url.replace(/\/edit.*$/, '/export?format=csv');
-    const uniqueId = Math.random().toString(36).substring(7);
-    const csvUrl = `${baseUrl}&cachebust=${uniqueId}`; 
+    // ADVANCED URL PARSING: Detects the specific Tab (GID)
+    let csvUrl = "";
+    const gidMatch = url.match(/gid=([0-9]+)/);
+    const gid = gidMatch ? gidMatch[1] : "0";
+
+    if (url.includes('docs.google.com/spreadsheets/d/e/')) {
+      // For "Publish to Web" links
+      csvUrl = url.includes('?') ? `${url}&output=csv` : `${url}?output=csv`;
+    } else {
+      // For standard "Share" links
+      const baseUrl = url.replace(/\/edit.*$/, '/export?format=csv');
+      csvUrl = `${baseUrl}&gid=${gid}&t=${new Date().getTime()}`;
+    }
     
     Papa.parse(csvUrl, {
       download: true, 
       header: true,
       skipEmptyLines: true,
       complete: (res) => {
-        console.log("New Data Received:", res.data[0]); // Check your browser console!
         if (res.data && res.data.length > 0) {
+          console.log(`Loaded Sheet Tab (GID: ${gid})`);
           setData(processData(res.data));
         } else {
-          alert("Sheet appears empty.");
+          alert("This specific tab appears to be empty.");
         }
         setLoading(false);
       },
       error: () => {
         setLoading(false);
-        alert("Fetch failed. Is the sheet public?");
+        alert("Fetch failed. Make sure the sheet is 'Anyone with the link can view'.");
       }
     });
   };
