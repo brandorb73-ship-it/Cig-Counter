@@ -70,34 +70,36 @@ export default function ProfessionalMonitor() {
     return { entities, countryTotals, countryPotential };
   };
 
-  const sync = () => {
+ const sync = () => {
     if (!url) return alert("Please paste a URL first");
     
     setLoading(true);
-    setData(null); // FORCE CLEAR PREVIOUS DATA VISUALLY
+    setData(null); // Wipes the screen entirely
 
+    // Force Google to treat this as a unique, non-cached request
     const baseUrl = url.replace(/\/edit.*$/, '/export?format=csv');
-    const csvUrl = `${baseUrl}&t=${new Date().getTime()}`; // CACHE BUSTER
+    const uniqueId = Math.random().toString(36).substring(7);
+    const csvUrl = `${baseUrl}&cachebust=${uniqueId}`; 
     
     Papa.parse(csvUrl, {
       download: true, 
       header: true,
       skipEmptyLines: true,
       complete: (res) => {
+        console.log("New Data Received:", res.data[0]); // Check your browser console!
         if (res.data && res.data.length > 0) {
           setData(processData(res.data));
         } else {
-          alert("Sheet appears empty or incorrectly formatted.");
+          alert("Sheet appears empty.");
         }
         setLoading(false);
       },
       error: () => {
-        alert("Error fetching sheet. Check permissions.");
         setLoading(false);
+        alert("Fetch failed. Is the sheet public?");
       }
     });
   };
-
   const handleReset = () => {
     setData(null);
     setUrl('');
