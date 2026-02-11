@@ -1,5 +1,3 @@
-import './globals.css';
-
 export const metadata = { title: 'Precursor Monitor' }
 
 export default function RootLayout({ children }) {
@@ -8,7 +6,7 @@ export default function RootLayout({ children }) {
       <head>
         <script src="https://cdn.tailwindcss.com"></script>
       </head>
-      <body>{children}</body>
+      <body className="antialiased">{children}</body>
     </html>
   )
 }
