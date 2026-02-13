@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders } from 'lucide-react';
 
 const CONVERSIONS = {
   'TOBACCO': 1333.33, 'TOW': 8333.33, 'PAPER': 20000, 'RODS': 6,
@@ -26,6 +26,7 @@ export default function ForensicGradeV9() {
   const [reports, setReports] = useState([]);
   const [reportTitle, setReportTitle] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [riskThreshold, setRiskThreshold] = useState(10); // Default 10% surplus trigger
 
   useEffect(() => {
     const saved = localStorage.getItem('forensic_v9_reports');
@@ -74,17 +75,35 @@ export default function ForensicGradeV9() {
       }
     });
 
-    return { entities: Object.values(registry).map(e => {
+    const entities = Object.values(registry).map(e => {
       const pots = [e.tobacco, e.tow, e.paper].filter(v => v > 0);
       const minPot = pots.length > 0 ? Math.min(...pots) : 0;
-      return { ...e, minPot, risk: e.actual > (minPot * 1.1) ? 'CRITICAL' : 'RECONCILED' };
-    }).sort((a, b) => b.actual - a.actual), nat };
+      
+      // LOGIC FIX: If actual exports exist but tobacco (the primary ingredient) is 0, mark as CRITICAL immediately.
+      const isMissingPrecursors = e.actual > 0 && e.tobacco === 0;
+      const thresholdMultiplier = 1 + (riskThreshold / 100);
+      const isOverCap = e.actual > (minPot * thresholdMultiplier);
+
+      return { 
+        ...e, 
+        minPot, 
+        risk: (isOverCap || isMissingPrecursors) ? 'CRITICAL' : 'RECONCILED' 
+      };
+    }).sort((a, b) => b.actual - a.actual);
+
+    return { entities, nat };
   };
 
+  // Recalculate data when threshold changes
+  const processedWithThreshold = useMemo(() => {
+    if (!data) return null;
+    return processData(data.rawOriginal);
+  }, [data?.rawOriginal, riskThreshold]);
+
   const filteredEntities = useMemo(() => {
-    if (!data) return [];
-    return data.entities.filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [data, searchTerm]);
+    if (!processedWithThreshold) return [];
+    return processedWithThreshold.entities.filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [processedWithThreshold, searchTerm]);
 
   const sync = () => {
     if (!url) return;
@@ -93,29 +112,31 @@ export default function ForensicGradeV9() {
     const baseUrl = url.replace(/\/edit.*$/, '/export?format=csv');
     Papa.parse(`${baseUrl}&gid=${gid}`, {
       download: true, header: true, skipEmptyLines: true,
-      complete: (res) => { setData(processData(res.data)); setLoading(false); }
+      complete: (res) => { 
+        setData({ rawOriginal: res.data, ...processData(res.data) }); 
+        setLoading(false); 
+      }
     });
-  };
-
-  const saveReport = () => {
-    if (!data || !reportTitle) return;
-    const newReport = { id: Date.now(), title: reportTitle, date: new Date().toLocaleString(), data };
-    const updated = [newReport, ...reports];
-    setReports(updated);
-    localStorage.setItem('forensic_v9_reports', JSON.stringify(updated));
-    setReportTitle('');
   };
 
   return (
     <div className="min-h-screen bg-slate-50 text-black p-6 lg:p-10 font-sans">
-      <div className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row items-center gap-6 bg-white border border-slate-300 p-6 rounded-2xl shadow-sm">
+      <div className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:row items-center gap-6 bg-white border border-slate-300 p-6 rounded-2xl shadow-sm">
         <div className="flex items-center gap-4 mr-auto">
           <div className="bg-slate-900 p-3 rounded-xl shadow-lg"><ShieldAlert className="text-white" size={28}/></div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-black uppercase">Forensic Monitor <span className="text-blue-700">9.2</span></h1>
-            <p className="text-xs text-black font-bold uppercase tracking-widest">Global Production & Precursor Intelligence</p>
+            <h1 className="text-2xl font-black tracking-tight text-black uppercase">Forensic Monitor <span className="text-blue-700">9.3</span></h1>
+            <p className="text-xs text-black font-bold uppercase tracking-widest text-black">Risk-Adjustable Audit Intelligence</p>
           </div>
         </div>
+        
+        {/* Risk Slider Integration */}
+        <div className="flex items-center gap-6 bg-slate-50 px-6 py-3 rounded-2xl border border-slate-200">
+           <div className="flex items-center gap-2 text-slate-500"><Sliders size={18}/> <span className="text-[10px] font-black uppercase tracking-widest text-black">Risk Threshold</span></div>
+           <input type="range" min="0" max="100" value={riskThreshold} onChange={(e) => setRiskThreshold(parseInt(e.target.value))} className="w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-700" />
+           <span className="font-mono font-black text-blue-700 w-8 text-sm">{riskThreshold}%</span>
+        </div>
+
         <div className="flex items-center gap-3 w-full lg:w-auto">
           <input className="bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2.5 text-sm w-full lg:w-80 outline-none focus:border-blue-600 font-bold text-black" placeholder="G-Sheet Source URL..." value={url} onChange={e => setUrl(e.target.value)} />
           <button onClick={sync} className="bg-blue-700 hover:bg-blue-800 px-8 py-2.5 rounded-xl font-black text-white text-xs uppercase tracking-widest transition-all shadow-md">Run Audit</button>
@@ -123,7 +144,7 @@ export default function ForensicGradeV9() {
         </div>
       </div>
 
-      {data && (
+      {processedWithThreshold && (
         <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
           <div className="flex justify-between items-center border-b-2 border-slate-200">
             <div className="flex gap-10 text-sm font-black uppercase tracking-widest">
@@ -134,7 +155,7 @@ export default function ForensicGradeV9() {
             {activeTab !== 'reports' && (
               <div className="flex gap-3 pb-4">
                 <input className="bg-white border-2 border-slate-200 rounded-xl px-4 py-1.5 text-xs font-black text-black" placeholder="Snapshot Title..." value={reportTitle} onChange={e => setReportTitle(e.target.value)} />
-                <button onClick={saveReport} className="flex items-center gap-2 bg-emerald-700 text-white px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-800 shadow-sm transition-all"><Save size={16}/> Save Report</button>
+                <button onClick={() => {if(reportTitle) setReports([{id:Date.now(), title:reportTitle, data:processedWithThreshold, date:new Date().toLocaleString()}, ...reports])}} className="flex items-center gap-2 bg-emerald-700 text-white px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-800 shadow-sm transition-all text-black"><Save size={16}/> Save Report</button>
               </div>
             )}
           </div>
@@ -147,11 +168,11 @@ export default function ForensicGradeV9() {
                   <div className="h-[450px]">
                     <ResponsiveContainer>
                       <BarChart data={[
-                        { name: 'Tobacco', val: Math.round(data.nat.tobacco), fill: '#f59e0b' },
-                        { name: 'Tow', val: Math.round(data.nat.tow), fill: '#0ea5e9' },
-                        { name: 'Paper', val: Math.round(data.nat.paper), fill: '#64748b' },
-                        { name: 'Rods', val: Math.round(data.nat.rods), fill: '#a855f7' },
-                        { name: 'Cigarette Exports', val: Math.round(data.nat.actual), fill: '#10b981' }
+                        { name: 'Tobacco', val: Math.round(processedWithThreshold.nat.tobacco), fill: '#f59e0b' },
+                        { name: 'Tow', val: Math.round(processedWithThreshold.nat.tow), fill: '#0ea5e9' },
+                        { name: 'Paper', val: Math.round(processedWithThreshold.nat.paper), fill: '#64748b' },
+                        { name: 'Rods', val: Math.round(processedWithThreshold.nat.rods), fill: '#a855f7' },
+                        { name: 'Cigarette Exports', val: Math.round(processedWithThreshold.nat.actual), fill: '#10b981' }
                       ]}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                         <XAxis dataKey="name" fontSize={12} fontWeight="bold" tick={{fill: '#000'}} tickLine={false} axisLine={false} tick={{dy: 10}} />
@@ -168,33 +189,33 @@ export default function ForensicGradeV9() {
                 <div className="lg:col-span-4 bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
                   <h2 className="text-xs font-black text-blue-700 uppercase tracking-widest border-b-2 border-slate-50 pb-5 mb-8">Forensic Balance Sheet</h2>
                   <div className="space-y-6">
-                    <BalanceRow label="Tobacco" kg={data.nat.tobaccoKg} sticks={data.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
-                    <BalanceRow label="Acetate Tow" kg={data.nat.towKg} sticks={data.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
-                    <BalanceRow label="Cig. Paper" kg={data.nat.paperKg} sticks={data.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
-                    <BalanceRow label="Filter Rods" kg={data.nat.rodsUnits} sticks={data.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
+                    <BalanceRow label="Tobacco" kg={processedWithThreshold.nat.tobaccoKg} sticks={processedWithThreshold.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
+                    <BalanceRow label="Acetate Tow" kg={processedWithThreshold.nat.towKg} sticks={processedWithThreshold.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
+                    <BalanceRow label="Cig. Paper" kg={processedWithThreshold.nat.paperKg} sticks={processedWithThreshold.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
+                    <BalanceRow label="Filter Rods" kg={processedWithThreshold.nat.rodsUnits} sticks={processedWithThreshold.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
                     <div className="py-4 border-y-2 border-slate-50">
-                        <BalanceRow label="Cigarette Exports" kg={data.nat.actual / 1333.33} sticks={data.nat.actual} unit="KG Eqv" color="bg-emerald-600" ratio={1333.33} />
+                        <BalanceRow label="Cigarette Exports" kg={processedWithThreshold.nat.actual / 1333.33} sticks={processedWithThreshold.nat.actual} unit="KG Eqv" color="bg-emerald-600" ratio={1333.33} />
                     </div>
                     <div className="pt-4">
                        <p className="text-xs text-black font-black uppercase tracking-tighter">Global Surplus Gap</p>
-                       <p className="text-3xl font-black text-red-700 font-mono tracking-tighter mt-1">{Math.round(data.nat.actual - data.nat.tobacco).toLocaleString()}</p>
+                       <p className="text-3xl font-black text-red-700 font-mono tracking-tighter mt-1">{Math.round(processedWithThreshold.nat.actual - processedWithThreshold.nat.tobacco).toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
               </div>
-
+              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-10">
                 <div className="bg-blue-50 p-10 rounded-[2rem] border-2 border-blue-100">
                   <h3 className="text-blue-900 font-black text-sm mb-4 flex items-center gap-2 uppercase tracking-wide"><Info size={22}/> 1. Tobacco Ceiling</h3>
-                  <p className="text-sm leading-relaxed text-black font-bold">The declared tobacco imports support <span className="font-black">{(data.nat.tobacco / 1e6).toFixed(1)}M</span> sticks. Actual exports are <span className="font-black text-red-700">{(data.nat.actual / data.nat.tobacco).toFixed(1)}x higher</span>, indicating massive unrecorded leaf inflow.</p>
+                  <p className="text-sm leading-relaxed text-black font-bold">Infrastructure supports <span className="font-black">{(processedWithThreshold.nat.tobacco / 1e6).toFixed(1)}M</span> sticks. Actual exports are <span className="font-black text-red-700">{(processedWithThreshold.nat.actual / processedWithThreshold.nat.tobacco).toFixed(1)}x higher</span>.</p>
                 </div>
                 <div className="bg-slate-100 p-10 rounded-[2rem] border-2 border-slate-200">
                   <h3 className="text-slate-900 font-black text-sm mb-4 flex items-center gap-2 uppercase tracking-wide"><Calculator size={22}/> 2. Material Logic</h3>
-                  <p className="text-sm leading-relaxed text-black font-bold">Forensic audit of tow vs. paper shows a gap of <span className="font-black">{(Math.abs(data.nat.tow - data.nat.paper) / 1e6).toFixed(1)}M</span> potential sticks. This imbalance confirms non-linear procurement.</p>
+                  <p className="text-sm leading-relaxed text-black font-bold text-black">Audit of tow vs. paper shows a gap of <span className="font-black">{(Math.abs(processedWithThreshold.nat.tow - processedWithThreshold.nat.paper) / 1e6).toFixed(1)}M</span> sticks.</p>
                 </div>
                 <div className="bg-red-50 p-10 rounded-[2rem] border-2 border-red-100">
                   <h3 className="text-red-900 font-black text-sm mb-4 flex items-center gap-2 uppercase tracking-wide"><AlertTriangle size={22}/> 3. Strategic Summary</h3>
-                  <p className="text-sm leading-relaxed text-red-900 font-bold italic">Infrastructure supports 542M sticks. The actual export of 37B sticks confirms a 98% shadow-market reliance or gross material misdeclaration.</p>
+                  <p className="text-sm leading-relaxed text-red-900 font-bold italic">The export of { (processedWithThreshold.nat.actual / 1e9).toFixed(1) }B sticks confirms gross reliance on shadow supply chains.</p>
                 </div>
               </div>
             </div>
@@ -202,7 +223,7 @@ export default function ForensicGradeV9() {
             <div className="space-y-6 animate-in fade-in duration-500">
               <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border-2 border-slate-200">
                 <Search className="text-slate-400" size={20}/>
-                <input className="w-full outline-none font-bold text-black" placeholder="Search target entity..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                <input className="w-full outline-none font-bold text-black text-black" placeholder="Search target entity..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
               </div>
 
               <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm">
@@ -225,7 +246,7 @@ export default function ForensicGradeV9() {
                         <td className="p-8">
                           <div className="flex flex-wrap gap-3">
                             {Object.entries(e.materials).map(([m, s]) => (
-                              <div key={m} className="group/pop relative bg-white border-2 border-slate-200 rounded-xl px-4 py-2 flex items-center gap-3 cursor-help hover:border-blue-700 transition-all">
+                              <div key={m} className="group/pop relative bg-white border-2 border-slate-200 rounded-xl px-4 py-2 flex items-center gap-3 cursor-help hover:border-blue-700 transition-all text-black">
                                 {Icons[m]}
                                 <span className="font-mono text-black font-black text-sm">{Math.round(s.rawQty).toLocaleString()} <span className="text-[10px] text-black font-bold">{s.unit}</span></span>
                                 <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-4 z-50 transition-all">
@@ -251,7 +272,11 @@ export default function ForensicGradeV9() {
                                 <div className="invisible group-hover/risk:visible opacity-0 group-hover/risk:opacity-100 absolute bottom-full right-0 mb-4 z-50 w-80 transition-all">
                                   <div className="bg-white border-2 border-red-500 p-6 rounded-2xl shadow-2xl text-left">
                                     <p className="text-red-700 font-black text-xs mb-2 uppercase tracking-widest flex items-center gap-2"><AlertTriangle size={18}/> Critical Audit Discrepancy</p>
-                                    <p className="text-xs text-black leading-relaxed font-bold">Export volume exceeds material capacity by <span className="text-red-700">{(e.actual - e.minPot).toLocaleString()}</span> sticks. High evidence of unrecorded precursor utilization.</p>
+                                    <p className="text-xs text-black leading-relaxed font-bold">
+                                      {e.actual > 0 && e.tobacco === 0 
+                                        ? "CRITICAL: Entity is exporting finished goods but has ZERO recorded tobacco imports."
+                                        : `Export volume exceeds material capacity by more than ${riskThreshold}%. Unaccounted surplus: ${Math.round(e.actual - e.minPot).toLocaleString()} sticks.`}
+                                    </p>
                                   </div>
                                 </div>
                               )}
@@ -264,16 +289,16 @@ export default function ForensicGradeV9() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {reports.map((r) => (
                 <div key={r.id} className="bg-white border-2 border-slate-200 p-8 rounded-[2rem] shadow-sm hover:border-blue-600 transition-all group">
                    <div className="flex justify-between items-start mb-6">
                     <div className="bg-slate-100 p-3 rounded-xl text-black group-hover:bg-blue-700 group-hover:text-white transition-colors"><History size={24}/></div>
-                    <button onClick={() => {const up = reports.filter(x => x.id !== r.id); setReports(up); localStorage.setItem('forensic_v9_reports', JSON.stringify(up));}} className="text-slate-300 hover:text-red-600 transition-colors"><Trash2 size={20}/></button>
+                    <button onClick={() => {setReports(reports.filter(x => x.id !== r.id))}} className="text-slate-300 hover:text-red-600 transition-colors"><Trash2 size={20}/></button>
                   </div>
                   <h3 className="font-black text-black text-lg mb-1">{r.title}</h3>
                   <p className="text-xs text-black font-bold mb-6 italic">{r.date}</p>
-                  <button onClick={() => {setData(r.data); setActiveTab('country');}} className="w-full bg-slate-900 py-3 rounded-xl text-white font-black text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all">Restore Report</button>
+                  <button onClick={() => {setData({ rawOriginal: r.data.rawOriginal, ...r.data }); setActiveTab('country');}} className="w-full bg-slate-900 py-3 rounded-xl text-white font-black text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all">Restore Report</button>
                 </div>
               ))}
             </div>
@@ -291,7 +316,7 @@ function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
         <div className="flex items-center gap-4">
           <div className={`w-1.5 h-10 rounded-full ${color}`}/>
           <div>
-            <p className="text-xs text-black font-black uppercase tracking-widest mb-1">{label}</p>
+            <p className="text-xs text-black font-black uppercase tracking-widest mb-1 text-black">{label}</p>
             <p className="text-lg font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-xs text-black font-bold uppercase">{unit}</span></p>
           </div>
         </div>
