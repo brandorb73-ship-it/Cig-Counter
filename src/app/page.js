@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, FileDown, Info, Search, FileType } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Calculator, AlertTriangle, RefreshCcw, Save, Search, FileType } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
