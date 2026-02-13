@@ -2,9 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Calculator, AlertTriangle, RefreshCcw, Save, Search, FileType } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Calculator, AlertTriangle, RefreshCcw, Save, Search } from 'lucide-react';
 
 const CONVERSIONS = {
   'TOBACCO': 1333.33, 'TOW': 8333.33, 'PAPER': 20000, 'RODS': 6,
@@ -108,37 +106,8 @@ export default function ForensicFinalV9() {
     });
   };
 
-  const exportToPDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    doc.setFontSize(18);
-    doc.text(`Forensic Report: ${reportTitle || 'National Audit'}`, 14, 20);
-    
-    if (activeTab === 'country') {
-      autoTable(doc, {
-        startY: 30,
-        head: [['Precursor', 'Raw Volume', 'Stick Potential']],
-        body: [
-          ['Tobacco', `${data.nat.tobaccoKg.toLocaleString()} KG`, `${Math.round(data.nat.tobacco).toLocaleString()}`],
-          ['Acetate Tow', `${data.nat.towKg.toLocaleString()} KG`, `${Math.round(data.nat.tow).toLocaleString()}`],
-          ['Cig. Paper', `${data.nat.paperKg.toLocaleString()} KG`, `${Math.round(data.nat.paper).toLocaleString()}`],
-          ['Actual Exports', '-', `${Math.round(data.nat.actual).toLocaleString()}`]
-        ],
-        theme: 'striped', headStyles: { fillColor: [15, 23, 42] }
-      });
-    } else {
-      autoTable(doc, {
-        startY: 30,
-        head: [['Entity', 'Transactions', 'Potential', 'Actual Exports', 'Status']],
-        body: filteredEntities.map(e => [e.name, e.tx, Math.round(e.minPot).toLocaleString(), Math.round(e.actual).toLocaleString(), e.risk]),
-        theme: 'grid', headStyles: { fillColor: [15, 23, 42] }
-      });
-    }
-    doc.save(`Forensic_Audit_${Date.now()}.pdf`);
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 text-black p-6 lg:p-10 font-sans">
-      {/* Header */}
       <div className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row items-center gap-6 bg-white border border-slate-300 p-6 rounded-2xl shadow-sm">
         <div className="flex items-center gap-4 mr-auto">
           <div className="bg-slate-900 p-3 rounded-xl shadow-lg"><ShieldAlert className="text-white" size={28}/></div>
@@ -162,7 +131,6 @@ export default function ForensicFinalV9() {
               <button onClick={() => setActiveTab('entities')} className={`pb-4 transition-colors ${activeTab === 'entities' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Target Analysis</button>
             </div>
             <div className="flex gap-3 pb-4">
-              <button onClick={exportToPDF} className="flex items-center gap-2 bg-slate-800 text-white px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-black shadow-sm transition-all"><FileType size={16}/> Export PDF</button>
               <input className="bg-white border-2 border-slate-200 rounded-xl px-4 py-1.5 text-xs font-black text-black" placeholder="Snapshot Title..." value={reportTitle} onChange={e => setReportTitle(e.target.value)} />
               <button onClick={() => {if(reportTitle) { setReports([{id:Date.now(), title:reportTitle, data, date:new Date().toLocaleString()}, ...reports]); setReportTitle('');}}} className="flex items-center gap-2 bg-emerald-700 text-white px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-800 shadow-sm transition-all"><Save size={16}/> Save</button>
             </div>
@@ -171,7 +139,7 @@ export default function ForensicFinalV9() {
           {activeTab === 'country' ? (
             <div className="space-y-10 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div id="chart-section" className="lg:col-span-8 bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
+                <div className="lg:col-span-8 bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
                   <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> Production vs. Precursor Matrix</h2>
                   <div className="h-[450px]">
                     <ResponsiveContainer>
@@ -185,11 +153,7 @@ export default function ForensicFinalV9() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                         <XAxis dataKey="name" fontSize={12} fontWeight="bold" tick={{fill: '#000'}} tickLine={false} axisLine={false} tick={{dy: 10}} />
                         <YAxis fontSize={11} fontWeight="bold" tick={{fill: '#000'}} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1e9).toFixed(1)}B`} />
-                        <Tooltip 
-                          formatter={(value) => [value.toLocaleString(), "Sticks"]}
-                          cursor={{fill: '#f1f5f9'}} 
-                          contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', padding: '15px'}} 
-                        />
+                        <Tooltip formatter={(v) => [v.toLocaleString(), "Sticks"]} cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', padding: '15px'}} />
                         <Bar dataKey="val" radius={[8, 8, 0, 0]} barSize={60}>
                            { [0,1,2,3,4].map((e,i) => <Cell key={i} fill={['#f59e0b', '#0ea5e9', '#64748b', '#a855f7', '#10b981'][i]} />) }
                         </Bar>
@@ -201,12 +165,12 @@ export default function ForensicFinalV9() {
                 <div className="lg:col-span-4 bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
                   <h2 className="text-xs font-black text-blue-700 uppercase tracking-widest border-b-2 border-slate-50 pb-5 mb-8">Forensic Balance Sheet</h2>
                   <div className="space-y-6">
-                    <BalanceRow label="Tobacco" kg={data.nat.tobaccoKg} sticks={data.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
-                    <BalanceRow label="Acetate Tow" kg={data.nat.towKg} sticks={data.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
-                    <BalanceRow label="Cig. Paper" kg={data.nat.paperKg} sticks={data.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
-                    <BalanceRow label="Filter Rods" kg={data.nat.rodsUnits} sticks={data.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
+                    <BalanceRow label="Tobacco" kg={data.nat.tobaccoKg} sticks={data.nat.tobacco} unit="KG" color="bg-amber-600" />
+                    <BalanceRow label="Acetate Tow" kg={data.nat.towKg} sticks={data.nat.tow} unit="KG" color="bg-sky-600" />
+                    <BalanceRow label="Cig. Paper" kg={data.nat.paperKg} sticks={data.nat.paper} unit="KG" color="bg-slate-600" />
+                    <BalanceRow label="Filter Rods" kg={data.nat.rodsUnits} sticks={data.nat.rods} unit="PCS" color="bg-purple-600" />
                     <div className="py-4 border-y-2 border-slate-50">
-                        <BalanceRow label="Cigarette Exports" kg={data.nat.actual / 1333.33} sticks={data.nat.actual} unit="KG Eqv" color="bg-emerald-600" ratio={1333.33} />
+                        <BalanceRow label="Cigarette Exports" kg={data.nat.actual / 1333.33} sticks={data.nat.actual} unit="KG Eqv" color="bg-emerald-600" />
                     </div>
                     <div className="pt-4">
                        <p className="text-xs text-black font-black uppercase tracking-tighter">Global Surplus Gap</p>
@@ -218,7 +182,7 @@ export default function ForensicFinalV9() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-10">
                 <div className="bg-blue-50 p-10 rounded-[2rem] border-2 border-blue-100">
-                  <h3 className="text-blue-900 font-black text-sm mb-4 flex items-center gap-2 uppercase tracking-wide"><Info size={22}/> 1. Tobacco Ceiling</h3>
+                  <h3 className="text-blue-900 font-black text-sm mb-4 flex items-center gap-2 uppercase tracking-wide"><Activity size={22}/> 1. Tobacco Ceiling</h3>
                   <p className="text-sm leading-relaxed text-black font-bold">The declared tobacco imports support <span className="font-black">{(data.nat.tobacco / 1e6).toFixed(1)}M</span> sticks. Actual exports are <span className="font-black text-red-700">{(data.nat.actual / data.nat.tobacco).toFixed(1)}x higher</span>, indicating massive unrecorded leaf inflow.</p>
                 </div>
                 <div className="bg-slate-100 p-10 rounded-[2rem] border-2 border-slate-200">
@@ -235,16 +199,11 @@ export default function ForensicFinalV9() {
             <div className="space-y-6 animate-in fade-in duration-500">
               <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border-2 border-slate-200">
                 <Search className="text-slate-400" size={20}/>
-                <input 
-                  className="w-full outline-none font-bold text-black" 
-                  placeholder="Search entity name to isolate transactions and sum totals..." 
-                  value={searchTerm} 
-                  onChange={e => setSearchTerm(e.target.value)}
-                />
+                <input className="w-full outline-none font-bold text-black" placeholder="Search entity name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
               </div>
 
               {searchTerm && (
-                <div className="bg-blue-900 text-white p-6 rounded-2xl flex justify-between items-center shadow-lg">
+                <div className="bg-slate-900 text-white p-6 rounded-2xl flex justify-between items-center shadow-lg">
                     <div>
                         <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Filtered Results Aggregate</p>
                         <h3 className="text-xl font-black italic">"{searchTerm}" Group Analysis</h3>
@@ -268,7 +227,7 @@ export default function ForensicFinalV9() {
                     <tr>
                       <th className="p-8">Entity Name</th>
                       <th className="p-8 text-center">Transactions</th>
-                      <th className="p-8">Material Inventory Log</th>
+                      <th className="p-8">Material Inventory</th>
                       <th className="p-8 text-right">Potential (Cap)</th>
                       <th className="p-8 text-right text-emerald-400">Actual Exports</th>
                       <th className="p-8 text-center">Audit Status</th>
@@ -276,13 +235,13 @@ export default function ForensicFinalV9() {
                   </thead>
                   <tbody className="divide-y-2 divide-slate-100">
                     {filteredEntities.map((e, i) => (
-                      <tr key={i} className="hover:bg-blue-50/50 transition-colors group">
+                      <tr key={i} className="hover:bg-blue-50/50 transition-colors border-b border-slate-100">
                         <td className="p-8 font-black text-black text-base">{e.name}</td>
                         <td className="p-8 text-center text-black font-mono font-bold text-lg">{e.tx}</td>
                         <td className="p-8">
                           <div className="flex flex-wrap gap-3">
                             {Object.entries(e.materials).map(([m, s]) => (
-                              <div key={m} className="group/pop relative bg-white border-2 border-slate-200 rounded-xl px-4 py-2 flex items-center gap-3 cursor-help">
+                              <div key={m} className="bg-white border-2 border-slate-200 rounded-xl px-4 py-2 flex items-center gap-3">
                                 {Icons[m]}
                                 <span className="font-mono text-black font-black text-sm">{Math.round(s.rawQty).toLocaleString()} <span className="text-[10px] text-black font-bold">{s.unit}</span></span>
                               </div>
@@ -307,19 +266,17 @@ export default function ForensicFinalV9() {
   );
 }
 
-function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
+function BalanceRow({ label, kg, sticks, unit, color }) {
   return (
-    <div className="group relative">
-      <div className="flex justify-between items-end cursor-help">
-        <div className="flex items-center gap-4">
-          <div className={`w-1.5 h-10 rounded-full ${color}`}/>
-          <div>
-            <p className="text-xs text-black font-black uppercase tracking-widest mb-1">{label}</p>
-            <p className="text-lg font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-xs text-black font-bold uppercase">{unit}</span></p>
-          </div>
+    <div className="flex justify-between items-end">
+      <div className="flex items-center gap-4">
+        <div className={`w-1.5 h-10 rounded-full ${color}`}/>
+        <div>
+          <p className="text-xs text-black font-black uppercase tracking-widest mb-1">{label}</p>
+          <p className="text-lg font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-xs text-black font-bold uppercase">{unit}</span></p>
         </div>
-        <p className="text-sm font-black text-blue-700 font-mono">{Math.round(sticks).toLocaleString()} sticks</p>
       </div>
+      <p className="text-sm font-black text-blue-700 font-mono">{Math.round(sticks).toLocaleString()} sticks</p>
     </div>
   );
 }
