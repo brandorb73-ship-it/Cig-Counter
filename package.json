@@ -14,8 +14,6 @@
     "lucide-react": "latest",
     "recharts": "^2.12.0",
     "lucide-react": "latest"
-    "jspdf": "^2.5.1",
-"jspdf-autotable": "^3.8.2"
   },
   "devDependencies": {
     "autoprefixer": "latest",
