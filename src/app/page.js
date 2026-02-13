@@ -2,11 +2,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Calculator, AlertTriangle, RefreshCcw, Save, Search } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, Search, Info } from 'lucide-react';
 
 const CONVERSIONS = {
   'TOBACCO': 1333.33, 'TOW': 8333.33, 'PAPER': 20000, 'RODS': 6,
-  'CIGARETTES_WT': 1333.33,
+  'CIGARETTES_WT': 1333.33, 
   'UNITS': { 'MIL': 1000, 'KGM': 1, 'KG': 1, 'TON': 1000, 'MT': 1000, 'CASE': 10000, 'PIECE': 1 }
 };
 
@@ -108,6 +108,7 @@ export default function ForensicFinalV9() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-black p-6 lg:p-10 font-sans">
+      {/* Header Section */}
       <div className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row items-center gap-6 bg-white border border-slate-300 p-6 rounded-2xl shadow-sm">
         <div className="flex items-center gap-4 mr-auto">
           <div className="bg-slate-900 p-3 rounded-xl shadow-lg"><ShieldAlert className="text-white" size={28}/></div>
@@ -124,7 +125,7 @@ export default function ForensicFinalV9() {
       </div>
 
       {data && (
-        <div className="max-w-[1600px] mx-auto space-y-8">
+        <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
           <div className="flex justify-between items-center border-b-2 border-slate-200">
             <div className="flex gap-10 text-sm font-black uppercase tracking-widest">
               <button onClick={() => setActiveTab('country')} className={`pb-4 transition-colors ${activeTab === 'country' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Country Intel</button>
@@ -137,7 +138,7 @@ export default function ForensicFinalV9() {
           </div>
 
           {activeTab === 'country' ? (
-            <div className="space-y-10 animate-in fade-in duration-500">
+            <div className="space-y-10">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-8 bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
                   <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> Production vs. Precursor Matrix</h2>
@@ -180,9 +181,10 @@ export default function ForensicFinalV9() {
                 </div>
               </div>
 
+              {/* v9.0 Wording Restored */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-10">
                 <div className="bg-blue-50 p-10 rounded-[2rem] border-2 border-blue-100">
-                  <h3 className="text-blue-900 font-black text-sm mb-4 flex items-center gap-2 uppercase tracking-wide"><Activity size={22}/> 1. Tobacco Ceiling</h3>
+                  <h3 className="text-blue-900 font-black text-sm mb-4 flex items-center gap-2 uppercase tracking-wide"><Info size={22}/> 1. Tobacco Ceiling</h3>
                   <p className="text-sm leading-relaxed text-black font-bold">The declared tobacco imports support <span className="font-black">{(data.nat.tobacco / 1e6).toFixed(1)}M</span> sticks. Actual exports are <span className="font-black text-red-700">{(data.nat.actual / data.nat.tobacco).toFixed(1)}x higher</span>, indicating massive unrecorded leaf inflow.</p>
                 </div>
                 <div className="bg-slate-100 p-10 rounded-[2rem] border-2 border-slate-200">
@@ -235,7 +237,7 @@ export default function ForensicFinalV9() {
                   </thead>
                   <tbody className="divide-y-2 divide-slate-100">
                     {filteredEntities.map((e, i) => (
-                      <tr key={i} className="hover:bg-blue-50/50 transition-colors border-b border-slate-100">
+                      <tr key={i} className="hover:bg-blue-50/50 transition-colors border-b border-slate-100 group">
                         <td className="p-8 font-black text-black text-base">{e.name}</td>
                         <td className="p-8 text-center text-black font-mono font-bold text-lg">{e.tx}</td>
                         <td className="p-8">
