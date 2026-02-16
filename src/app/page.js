@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Target, Gavel, Zap, Download, XCircle, ChevronRight, HelpCircle, Landmark } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Target, Gavel, Zap, Download, XCircle, ChevronRight, HelpCircle, Landmark, TrendingUp } from 'lucide-react';
 
 const CONVERSIONS = {
   'TOBACCO': 1333.33, 
@@ -10,7 +10,7 @@ const CONVERSIONS = {
   'PAPER': 20000, 
   'RODS': 6,
   'CIGARETTES_EXPORT': 1000, 
-  'TAX_PER_STICK': 0.15, // Adjustable tax constant
+  'TAX_PER_STICK': 0.15,
   'UNITS': { 'MIL': 1000, 'KGM': 1, 'KG': 1, 'TON': 1000, 'MT': 1000, 'CASE': 10000, 'PIECE': 1 }
 };
 
@@ -125,6 +125,27 @@ export default function ForensicGradeV9() {
     }), { actual: 0, potential: 0, tx: 0 });
   }, [filteredEntities]);
 
+  const downloadCSV = () => {
+    const data = filteredEntities.map(e => ({
+      Entity: e.name,
+      Transactions: e.tx,
+      'Tobacco Potential': Math.round(e.tobacco),
+      'Tow Potential': Math.round(e.tow),
+      'Paper Potential': Math.round(e.paper),
+      'Rods Potential': Math.round(e.rods),
+      'Potential Cap': Math.round(e.minPot),
+      'Actual Exports': Math.round(e.actual),
+      'Tax Risk': (Math.max(0, e.actual - e.minPot) * CONVERSIONS.TAX_PER_STICK).toFixed(2),
+      Verdict: e.risk
+    }));
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Forensic_Audit_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+  };
+
   const sync = () => {
     if (!url) return;
     setLoading(true);
@@ -152,13 +173,13 @@ export default function ForensicGradeV9() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-black p-6 lg:p-10 font-sans">
-      {/* HEADER */}
+      {/* HEADER SECTION - NO CHANGES */}
       <div className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row items-center gap-6 bg-white border border-slate-300 p-6 rounded-2xl shadow-sm">
         <div className="flex items-center gap-4 mr-auto">
           <div className="bg-slate-900 p-3 rounded-xl shadow-lg"><ShieldAlert className="text-white" size={28}/></div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-black uppercase">Forensic Monitor <span className="text-blue-700">9.7</span></h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} className="text-emerald-600"/> Tax & Integrity Engine</p>
+            <h1 className="text-2xl font-black tracking-tight text-black uppercase">Forensic Monitor <span className="text-blue-700">9.8</span></h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} className="text-emerald-600"/> Intelligence & Export Suite</p>
           </div>
         </div>
         
@@ -199,6 +220,7 @@ export default function ForensicGradeV9() {
 
           {activeTab === 'country' ? (
             <div className="space-y-10">
+              {/* TOP CARDS */}
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <SummaryBox title="Tobacco Ceiling" val={auditResult.tobaccoCeiling} sub="MAX STICKS FROM LEAF" color="text-amber-700" />
                 <SummaryBox title="Supply Bottleneck" val={auditResult.bottleneck.name} sub="STRICTEST PRECURSOR" color="text-blue-700" isText />
@@ -210,6 +232,7 @@ export default function ForensicGradeV9() {
                 </div>
               </div>
 
+              {/* GRAPH & MATRIX */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-8 bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
                   <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> National Precursor vs. Production Matrix</h2>
@@ -250,6 +273,7 @@ export default function ForensicGradeV9() {
                 </div>
               </div>
 
+              {/* ANALYSIS & GUIDE BELOW */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-xl">
                     <h2 className="text-sm font-black text-blue-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Gavel size={20}/> National Forensic Analysis</h2>
@@ -298,9 +322,14 @@ export default function ForensicGradeV9() {
           ) : activeTab === 'entities' ? (
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
-                    <div className="relative w-full md:w-96">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-12 pr-4 text-sm font-bold focus:border-blue-600 outline-none" placeholder="Filter by Entity Name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    <div className="flex items-center gap-4 w-full md:w-auto">
+                        <div className="relative w-full md:w-96">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-12 pr-4 text-sm font-bold focus:border-blue-600 outline-none" placeholder="Filter by Entity Name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                        </div>
+                        <button onClick={downloadCSV} className="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 px-4 whitespace-nowrap">
+                            <Download size={18}/> <span className="text-[10px] font-black uppercase tracking-widest">CSV</span>
+                        </button>
                     </div>
                     <div className="flex gap-8 px-6 border-l border-slate-100">
                         <div><p className="text-[10px] font-black text-slate-400 uppercase">Actual Total</p><p className="text-lg font-black text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</p></div>
@@ -353,7 +382,6 @@ export default function ForensicGradeV9() {
                               <span className={`px-6 py-2 rounded-full text-[10px] font-black tracking-widest border-2 flex items-center gap-2 uppercase cursor-pointer ${e.risk === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
                                   {e.risk === 'CRITICAL' ? <AlertTriangle size={12}/> : <CheckCircle size={12}/>} {e.risk}
                               </span>
-                              {/* FIXED POSITIONING TO AVOID CLIPPING */}
                               <div className="invisible group-hover/risk:visible opacity-0 group-hover/risk:opacity-100 absolute top-full right-0 mt-2 z-[100] w-80 transition-all text-left pointer-events-none">
                                 <div className={`bg-white border-2 p-6 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] ${e.risk === 'CRITICAL' ? 'border-red-500' : 'border-emerald-500'}`}>
                                   <p className={`${e.risk === 'CRITICAL' ? 'text-red-700' : 'text-emerald-700'} font-black text-xs mb-2 uppercase flex items-center gap-2`}><Info size={16}/> Evidence Log</p>
