@@ -2,14 +2,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Gavel, Zap } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Target, Gavel, Zap, Download } from 'lucide-react';
 
 const CONVERSIONS = {
-  'TOBACCO': 1333.33, 
+  'TOBACCO': 1333.33, // 0.75g net tobacco per stick
   'TOW': 8333.33, 
   'PAPER': 20000, 
   'RODS': 6,
-  'CIGARETTES_EXPORT': 1000, // Gross weight ratio
+  'CIGARETTES_EXPORT': 1000, // 1.0g gross weight per stick
   'UNITS': { 'MIL': 1000, 'KGM': 1, 'KG': 1, 'TON': 1000, 'MT': 1000, 'CASE': 10000, 'PIECE': 1 }
 };
 
@@ -27,6 +27,7 @@ export default function ForensicGradeV9() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('country');
   const [reports, setReports] = useState([]);
+  const [reportTitle, setReportTitle] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [riskThreshold, setRiskThreshold] = useState(10);
 
@@ -99,7 +100,7 @@ export default function ForensicGradeV9() {
         { name: 'Acetate Tow', val: nat.tow },
         { name: 'Cigarette Paper', val: nat.paper }
     ].filter(p => p.val > 0);
-    const bottleneck = pools.length > 0 ? pools.reduce((p, c) => p.val < c.val ? p : c) : { name: 'N/A', val: 0 };
+    const bottleneck = pools.length > 0 ? pools.reduce((p, c) => p.val < c.val ? p : c) : { name: 'None', val: 0 };
 
     return { entities, nat, bottleneck, tobaccoCeiling: nat.tobacco };
   }, [rawData, riskThreshold]);
@@ -128,52 +129,82 @@ export default function ForensicGradeV9() {
     });
   };
 
+  const saveReport = () => {
+    if (!reportTitle || !auditResult) return;
+    const newReport = {
+      id: Date.now(),
+      title: reportTitle,
+      date: new Date().toLocaleString(),
+      summary: { ...auditResult.nat, bottleneck: auditResult.bottleneck },
+      entities: auditResult.entities
+    };
+    const updated = [newReport, ...reports];
+    setReports(updated);
+    localStorage.setItem('forensic_v9_reports', JSON.stringify(updated));
+    setReportTitle('');
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-black p-6 lg:p-10">
+    <div className="min-h-screen bg-slate-50 text-black p-6 lg:p-10 font-sans">
+      {/* HEADER SECTION */}
       <div className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row items-center gap-6 bg-white border border-slate-300 p-6 rounded-2xl shadow-sm">
         <div className="flex items-center gap-4 mr-auto">
           <div className="bg-slate-900 p-3 rounded-xl shadow-lg"><ShieldAlert className="text-white" size={28}/></div>
           <div>
-            <h1 className="text-2xl font-black text-black uppercase">Forensic Monitor <span className="text-blue-700">9.4</span></h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Fixed: Scope Error `kg`</p>
+            <h1 className="text-2xl font-black tracking-tight text-black uppercase">Forensic Monitor <span className="text-blue-700">9.4</span></h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} className="text-emerald-600"/> Audit Engine Active</p>
           </div>
         </div>
         
         <div className="flex items-center gap-6 bg-slate-100 px-6 py-3 rounded-2xl border-2 border-slate-200">
-           <Sliders size={18} className="text-blue-700"/>
-           <input type="range" min="0" max="100" step="5" value={riskThreshold} onChange={(e) => setRiskThreshold(parseInt(e.target.value))} className="w-32 accent-blue-700" />
+           <div className="flex items-center gap-2 text-blue-700"><Sliders size={18}/> <span className="text-[10px] font-black uppercase text-black">Margin of Error</span></div>
+           <input type="range" min="0" max="100" step="5" value={riskThreshold} onChange={(e) => setRiskThreshold(parseInt(e.target.value))} className="w-32 h-1.5 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-blue-700" />
            <span className="font-mono font-black text-blue-700 w-10 text-sm">{riskThreshold}%</span>
         </div>
 
         <div className="flex items-center gap-3 w-full lg:w-auto">
-          <input className="bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2.5 text-sm w-full lg:w-80 font-bold" placeholder="G-Sheet Source URL..." value={url} onChange={e => setUrl(e.target.value)} />
-          <button onClick={sync} className="bg-blue-700 hover:bg-blue-800 px-8 py-2.5 rounded-xl font-black text-white text-xs uppercase tracking-widest">Run Audit</button>
+          <input className="bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2.5 text-sm w-full lg:w-80 outline-none focus:border-blue-600 font-bold" placeholder="Google Sheets URL..." value={url} onChange={e => setUrl(e.target.value)} />
+          <button onClick={sync} disabled={loading} className="bg-blue-700 hover:bg-blue-800 px-8 py-2.5 rounded-xl font-black text-white text-xs uppercase tracking-widest transition-all shadow-md flex items-center gap-2">
+            {loading ? <RefreshCcw className="animate-spin" size={16}/> : 'Run Audit'}
+          </button>
         </div>
       </div>
 
       {auditResult && (
-        <div className="max-w-[1600px] mx-auto space-y-8">
-          <div className="flex gap-10 text-sm font-black uppercase border-b-2 border-slate-200">
-            <button onClick={() => setActiveTab('country')} className={`pb-4 ${activeTab === 'country' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Country Intel</button>
-            <button onClick={() => setActiveTab('entities')} className={`pb-4 ${activeTab === 'entities' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Target Analysis</button>
+        <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
+          {/* NAVIGATION & PERSISTENCE */}
+          <div className="flex justify-between items-center border-b-2 border-slate-200">
+            <div className="flex gap-10 text-sm font-black uppercase tracking-widest">
+              <button onClick={() => setActiveTab('country')} className={`pb-4 transition-colors ${activeTab === 'country' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Country Intel</button>
+              <button onClick={() => setActiveTab('entities')} className={`pb-4 transition-colors ${activeTab === 'entities' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Target Analysis</button>
+              <button onClick={() => setActiveTab('reports')} className={`pb-4 transition-colors ${activeTab === 'reports' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Archived Reports</button>
+            </div>
+            {activeTab !== 'reports' && (
+              <div className="flex gap-3 pb-4">
+                <input className="bg-white border-2 border-slate-200 rounded-xl px-4 py-1.5 text-xs font-black" placeholder="Snapshot Name..." value={reportTitle} onChange={e => setReportTitle(e.target.value)} />
+                <button onClick={saveReport} className="flex items-center gap-2 bg-emerald-700 text-white px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-800 shadow-sm transition-all"><Save size={16}/> Archive</button>
+              </div>
+            )}
           </div>
 
           {activeTab === 'country' ? (
             <div className="space-y-10">
+              {/* TOP LEVEL FORENSIC SUMMARY */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <SummaryCard title="Tobacco Ceiling" value={auditResult.tobaccoCeiling} subtitle="MAX BY RAW LEAF" color="text-amber-700" />
-                <SummaryCard title="Bottleneck" value={auditResult.bottleneck.name} subtitle="STRICTEST SUPPLY" color="text-blue-700" isText />
-                <SummaryCard title="Aggregate Gap" value={Math.max(0, auditResult.nat.actual - auditResult.nat.tobacco)} subtitle="STICKS OVER LEAF" color="text-red-600" />
-                <div className="bg-slate-900 p-6 rounded-3xl shadow-lg flex flex-col justify-center">
-                    <p className="text-[10px] font-black text-blue-400 uppercase">Balance Health</p>
-                    <p className="text-2xl font-black text-white">{auditResult.nat.tobacco > 0 ? Math.round((auditResult.nat.actual/auditResult.nat.tobacco)*100) : 0}%</p>
+                <SummaryBox title="Tobacco Ceiling" val={auditResult.tobaccoCeiling} sub="MAX STICKS FROM LEAF" color="text-amber-700" />
+                <SummaryBox title="Supply Bottleneck" val={auditResult.bottleneck.name} sub="STRICTEST PRECURSOR" color="text-blue-700" isText />
+                <SummaryBox title="Production Gap" val={Math.max(0, auditResult.nat.actual - auditResult.nat.tobacco)} sub="UNSUPPORTED VOLUME" color="text-red-600" />
+                <div className="bg-slate-900 border-2 border-slate-800 p-6 rounded-3xl shadow-lg flex flex-col justify-center">
+                    <div className="flex items-center gap-2 mb-1"><Zap size={14} className="text-yellow-400"/><p className="text-[10px] font-black text-white uppercase">Health Score</p></div>
+                    <p className="text-3xl font-black text-white">{auditResult.nat.tobacco > 0 ? Math.round((auditResult.nat.actual/auditResult.nat.tobacco)*100) : 0}%</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 text-balance">Sticks exported per stick of leaf input</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-8 bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
-                  <h2 className="text-sm font-black text-black uppercase mb-10">Forensic Supply Matrix</h2>
-                  <div className="h-[400px]">
+                  <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> National Precursor vs. Production Matrix</h2>
+                  <div className="h-[450px]">
                     <ResponsiveContainer>
                       <BarChart data={[
                         { name: 'Tobacco', val: Math.round(auditResult.nat.tobacco), fill: '#f59e0b' },
@@ -181,10 +212,10 @@ export default function ForensicGradeV9() {
                         { name: 'Paper', val: Math.round(auditResult.nat.paper), fill: '#64748b' },
                         { name: 'Exports', val: Math.round(auditResult.nat.actual), fill: '#10b981' }
                       ]}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" fontSize={12} fontWeight="bold" />
-                        <YAxis fontSize={11} fontWeight="bold" tickFormatter={(v) => `${(v/1e6).toFixed(0)}M`} />
-                        <Tooltip />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                        <XAxis dataKey="name" fontSize={12} fontWeight="bold" tickLine={false} axisLine={false} tick={{dy: 10}} />
+                        <YAxis fontSize={11} fontWeight="bold" tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1e6).toFixed(0)}M`} />
+                        <Tooltip formatter={(v) => [v.toLocaleString(), "Sticks"]} cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'}} />
                         <Bar dataKey="val" radius={[8, 8, 0, 0]} barSize={60}>
                             { [0,1,2,3].map((e,i) => <Cell key={i} fill={['#f59e0b', '#0ea5e9', '#64748b', '#10b981'][i]} />) }
                         </Bar>
@@ -195,71 +226,129 @@ export default function ForensicGradeV9() {
 
                 <div className="lg:col-span-4 space-y-6">
                   <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
-                    <h2 className="text-xs font-black text-blue-700 uppercase border-b border-slate-100 pb-4 mb-6">Balance Sheet</h2>
+                    <h2 className="text-xs font-black text-blue-700 uppercase tracking-widest border-b-2 border-slate-50 pb-5 mb-8">Balance Table</h2>
                     <div className="space-y-6">
-                      <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} color="bg-amber-600" />
-                      <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} color="bg-sky-600" />
-                      <BalanceRow label="Cig. Exports" kg={auditResult.nat.actual / 1000} sticks={auditResult.nat.actual} color="bg-emerald-600" isExport />
+                      <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
+                      <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
+                      <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
+                      <div className="py-4 border-y-2 border-slate-50">
+                          <BalanceRow label="Cigarette Exports" kg={auditResult.nat.actual / CONVERSIONS.CIGARETTES_EXPORT} sticks={auditResult.nat.actual} unit="KG Gross" color="bg-emerald-600" ratio={CONVERSIONS.CIGARETTES_EXPORT} />
+                      </div>
                     </div>
                   </div>
-                  <div className="bg-blue-50 border-2 border-blue-100 p-6 rounded-3xl">
-                    <p className="text-[10px] font-black text-blue-800 uppercase flex items-center gap-2"><Gavel size={14}/> Audit Rule</p>
-                    <p className="text-[11px] font-bold text-blue-900 mt-2 leading-relaxed">
-                      Leaf conversion assumes 0.75g/stick. Finished export weight assumes 1.0g/stick (gross).
-                    </p>
+
+                  <div className="bg-blue-900 text-white p-8 rounded-[2.5rem] shadow-xl">
+                    <h2 className="text-xs font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Gavel size={16}/> Forensic Standards</h2>
+                    <ul className="space-y-4 text-[11px] font-bold leading-relaxed text-blue-100 italic">
+                        <li>• Tobacco Leaf Math: $1\text{kg} = 1333.33\text{ sticks}$ (Assuming $0.75\text{g}$ net tobacco fill per cigarette).</li>
+                        <li>• Finished Export Math: $1\text{kg} = 1000\text{ sticks}$ (Assuming $1.0\text{g}$ total weight including filter, tipping, and paper).</li>
+                    </ul>
                   </div>
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="space-y-6">
-                <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200">
-                    <div className="relative w-96">
+          ) : activeTab === 'entities' ? (
+            <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
+                    <div className="relative w-full md:w-96">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input className="w-full bg-slate-50 rounded-xl py-2 pl-12 pr-4 text-sm font-bold" placeholder="Search Entity..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <input className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-12 pr-4 text-sm font-bold focus:border-blue-600 outline-none" placeholder="Filter by Entity Name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
-                    <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase">Actual Total (Filtered)</p>
-                        <p className="text-xl font-black text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</p>
+                    <div className="flex gap-8 px-6 border-l border-slate-100">
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Filtered Actual</p><p className="text-lg font-black text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Filtered Potential</p><p className="text-lg font-black text-slate-800">{Math.round(filteredSums.potential).toLocaleString()}</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Active Records</p><p className="text-lg font-black text-blue-700">{filteredSums.tx}</p></div>
                     </div>
                 </div>
 
-              <div className="bg-white border-2 border-slate-200 rounded-[2rem] overflow-hidden">
+              <div className="bg-white border-2 border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest">
+                  <thead className="bg-slate-900 text-white uppercase font-black tracking-widest text-[10px]">
                     <tr>
-                      <th className="p-6">Entity</th>
-                      <th className="p-6">Inventory Items</th>
-                      <th className="p-6 text-right">Potential</th>
-                      <th className="p-6 text-right">Actual Exports</th>
-                      <th className="p-6 text-center">Status</th>
+                      <th className="p-8">Entity Name</th>
+                      <th className="p-8 text-center">Transactions</th>
+                      <th className="p-8">Material Inventory Breakdown</th>
+                      <th className="p-8 text-right">Potential Cap</th>
+                      <th className="p-8 text-right text-emerald-400">Actual Exports</th>
+                      <th className="p-8 text-center">Audit Verdict</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y-2 divide-slate-100">
                     {filteredEntities.map((e, i) => (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <td className="p-6 font-black">{e.name}</td>
-                        <td className="p-6">
-                          <div className="flex gap-2">
+                      <tr key={i} className="hover:bg-blue-50/50 transition-colors group/row">
+                        <td className="p-8 font-black text-black text-base">{e.name}</td>
+                        <td className="p-8 text-center text-black font-mono font-bold text-lg">{e.tx}</td>
+                        <td className="p-8">
+                          <div className="flex flex-wrap gap-2">
                             {Object.entries(e.materials).map(([m, s]) => (
-                                <span key={m} className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] font-bold flex items-center gap-2">
-                                    {Icons[m]} {Math.round(s.rawQty).toLocaleString()} {s.unit}
-                                </span>
+                              <div key={m} className="group/pop relative bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 cursor-help hover:border-blue-600 transition-all">
+                                {Icons[m]}
+                                <span className="font-mono text-black font-bold text-[11px]">{Math.round(s.rawQty).toLocaleString()} {s.unit}</span>
+                                <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-3 z-50 transition-all">
+                                  <div className="bg-slate-950 text-white p-5 rounded-2xl shadow-2xl min-w-[240px] border border-slate-800">
+                                    <p className="text-blue-400 font-black text-[10px] uppercase mb-2 pb-1 border-b border-slate-800">{m} Forensic Calc</p>
+                                    <div className="space-y-1 font-mono text-[10px]">
+                                      <div className="flex justify-between"><span>Input:</span> <span>{s.rawQty.toLocaleString()} {s.unit}</span></div>
+                                      <div className="flex justify-between"><span>Ratio:</span> <span>x {s.ratioUsed.toLocaleString()}</span></div>
+                                      <div className="flex justify-between pt-2 border-t border-slate-800 font-black text-emerald-400"><span>Stick Eq:</span> <span>{Math.round(s.sticks).toLocaleString()}</span></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             ))}
                           </div>
                         </td>
-                        <td className="p-6 text-right font-mono font-bold">{Math.round(e.minPot).toLocaleString()}</td>
-                        <td className="p-6 text-right font-mono font-black text-emerald-700">{Math.round(e.actual).toLocaleString()}</td>
-                        <td className="p-6 text-center">
-                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black border-2 ${e.risk === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                                {e.risk}
-                            </span>
+                        <td className="p-8 text-right font-mono text-black font-bold text-base">{Math.round(e.minPot).toLocaleString()}</td>
+                        <td className="p-8 text-right font-mono text-black font-black text-lg">{Math.round(e.actual).toLocaleString()}</td>
+                        <td className="p-8 text-center">
+                           <div className="group/risk relative inline-block">
+                              <span className={`px-6 py-2 rounded-full text-[10px] font-black tracking-widest border-2 flex items-center gap-2 uppercase ${e.risk === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
+                                  {e.risk === 'CRITICAL' ? <AlertTriangle size={12}/> : <CheckCircle size={12}/>} {e.risk}
+                              </span>
+                              <div className="invisible group-hover/risk:visible opacity-0 group-hover/risk:opacity-100 absolute bottom-full right-0 mb-4 z-50 w-80 transition-all text-left">
+                                <div className={`bg-white border-2 p-6 rounded-2xl shadow-2xl ${e.risk === 'CRITICAL' ? 'border-red-500' : 'border-emerald-500'}`}>
+                                  <p className={`${e.risk === 'CRITICAL' ? 'text-red-700' : 'text-emerald-700'} font-black text-xs mb-2 uppercase flex items-center gap-2`}><Info size={16}/> Evidence Log</p>
+                                  <p className="text-xs text-black leading-relaxed font-bold">
+                                    {e.risk === 'CRITICAL' ? (
+                                        e.violationType === 'ZERO_TOBACCO' 
+                                        ? "CRITICAL: Entity is exporting finished sticks but has zero recorded tobacco leaf imports. Suggests undisclosed illicit sourcing."
+                                        : `CRITICAL: Actual exports exceed supply-chain potential by ${Math.round((e.actual/e.minPot - 1)*100)}%, surpassing the ${riskThreshold}% threshold.`
+                                    ) : (
+                                        "RECONCILED: Entity exports are mathematically balanced against recorded precursor material imports."
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                           </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            </div>
+          ) : (
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {reports.length === 0 && <p className="col-span-3 text-center py-20 text-slate-400 font-bold italic">No archived snapshots found.</p>}
+              {reports.map((r) => (
+                <div key={r.id} className="bg-white border-2 border-slate-200 p-8 rounded-[2rem] shadow-sm hover:border-blue-600 transition-all group">
+                   <div className="flex justify-between items-start mb-6">
+                    <div className="bg-slate-100 p-3 rounded-xl text-black group-hover:bg-blue-700 group-hover:text-white transition-colors"><History size={24}/></div>
+                    <button onClick={() => {
+                        const updated = reports.filter(x => x.id !== r.id);
+                        setReports(updated);
+                        localStorage.setItem('forensic_v9_reports', JSON.stringify(updated));
+                    }} className="text-slate-300 hover:text-red-600 transition-colors"><Trash2 size={20}/></button>
+                  </div>
+                  <h3 className="font-black text-black text-lg mb-1">{r.title}</h3>
+                  <p className="text-[10px] text-slate-500 font-bold mb-6 uppercase tracking-widest">{r.date}</p>
+                  <div className="space-y-2 mb-8 border-t border-slate-50 pt-4">
+                     <div className="flex justify-between text-[10px] font-black uppercase"><span>Export Vol:</span> <span>{Math.round(r.summary.actual).toLocaleString()}</span></div>
+                     <div className="flex justify-between text-[10px] font-black uppercase"><span>Bottleneck:</span> <span className="text-blue-700">{r.summary.bottleneck.name}</span></div>
+                  </div>
+                  <button onClick={() => {setActiveTab('country');}} className="w-full bg-slate-900 py-3 rounded-xl text-white font-black text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all">View Analytics</button>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -268,27 +357,40 @@ export default function ForensicGradeV9() {
   );
 }
 
-function SummaryCard({ title, value, subtitle, color, isText }) {
+function SummaryBox({ title, val, sub, color, isText }) {
     return (
-        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
+        <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm">
             <p className="text-[10px] font-black text-slate-400 uppercase mb-2">{title}</p>
-            <p className={`text-2xl font-black ${color}`}>{isText ? value : Math.round(value).toLocaleString()}</p>
-            <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tighter">{subtitle}</p>
+            <p className={`text-2xl font-black ${color}`}>{isText ? val : Math.round(val).toLocaleString()}</p>
+            <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tighter">{sub}</p>
         </div>
     );
 }
 
-function BalanceRow({ label, kg, sticks, color, isExport }) {
+function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
   return (
-    <div className="flex justify-between items-end">
-      <div className="flex items-center gap-3">
-        <div className={`w-1 h-8 rounded-full ${color}`}/>
-        <div>
-          <p className="text-[10px] font-black uppercase text-slate-500">{label}</p>
-          <p className="text-base font-black">{Math.round(kg).toLocaleString()} <span className="text-[10px] uppercase">{isExport ? 'KG Gross' : 'KG'}</span></p>
+    <div className="group relative">
+      <div className="flex justify-between items-end cursor-help">
+        <div className="flex items-center gap-4">
+          <div className={`w-1.5 h-10 rounded-full ${color}`}/>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest mb-1 text-slate-500">{label}</p>
+            <p className="text-lg font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-[10px] font-bold text-slate-400 uppercase">{unit}</span></p>
+          </div>
+        </div>
+        <div className="text-right">
+            <p className="text-sm font-black text-blue-700 font-mono">{Math.round(sticks).toLocaleString()}</p>
+            <p className="text-[8px] font-bold uppercase text-slate-400">STICKS EQ</p>
         </div>
       </div>
-      <p className="text-xs font-black text-blue-700 font-mono">{Math.round(sticks).toLocaleString()} sticks</p>
+      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute left-0 bottom-full mb-3 z-50 transition-all">
+         <div className="bg-slate-900 text-white p-4 rounded-xl shadow-xl text-[10px] font-mono min-w-[200px]">
+            <p className="text-blue-400 font-black uppercase mb-1 border-b border-slate-700 pb-1">{label} Rule</p>
+            <div className="flex justify-between"><span>Input Qty:</span> <span>{Math.round(kg).toLocaleString()}</span></div>
+            <div className="flex justify-between"><span>Factor:</span> <span>x {ratio}</span></div>
+            <div className="flex justify-between pt-1 border-t border-slate-700 text-emerald-400 font-black"><span>Total Output:</span> <span>{Math.round(sticks).toLocaleString()}</span></div>
+         </div>
+      </div>
     </div>
   );
 }
