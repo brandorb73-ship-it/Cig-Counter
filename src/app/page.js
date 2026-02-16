@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Target, Gavel, Zap, Download, XCircle } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Target, Gavel, Zap, Download, XCircle, ChevronRight, HelpCircle } from 'lucide-react';
 
 const CONVERSIONS = {
   'TOBACCO': 1333.33, 
@@ -31,28 +31,17 @@ export default function ForensicGradeV9() {
   const [searchTerm, setSearchTerm] = useState('');
   const [riskThreshold, setRiskThreshold] = useState(10);
 
-  // Load persistence
   useEffect(() => {
     try {
       const saved = localStorage.getItem('forensic_v9_reports');
       if (saved) setReports(JSON.parse(saved));
-    } catch (e) {
-      console.error("Failed to load reports", e);
-      setReports([]);
-    }
+    } catch (e) { setReports([]); }
   }, []);
 
-  // CLEAR DATA FUNCTION
-  const clearSession = () => {
-    if(window.confirm("Clear all loaded data and reset audit?")) {
-        setRawData([]);
-        setUrl('');
-    }
-  };
+  const clearSession = () => { if(window.confirm("Reset entire audit session?")) { setRawData([]); setUrl(''); } };
 
   const auditResult = useMemo(() => {
     if (!rawData || rawData.length === 0) return null;
-    
     const registry = {};
     let nat = { tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 };
 
@@ -83,11 +72,11 @@ export default function ForensicGradeV9() {
       } else if (mat && CONVERSIONS[mat]) {
         const sticks = convQty * CONVERSIONS[mat];
         registry[entity][mat.toLowerCase()] += sticks;
-        if (mat === 'TOBACCO') nat.tobaccoKg += convQty;
-        if (mat === 'TOW') nat.towKg += convQty;
-        if (mat === 'PAPER') nat.paperKg += convQty;
-        if (mat === 'RODS') nat.rodsUnits += convQty;
-        nat[mat.toLowerCase()] += sticks;
+        if (mat === 'TOBACCO') { nat.tobaccoKg += convQty; nat.tobacco += sticks; }
+        if (mat === 'TOW') { nat.towKg += convQty; nat.tow += sticks; }
+        if (mat === 'PAPER') { nat.paperKg += convQty; nat.paper += sticks; }
+        if (mat === 'RODS') { nat.rodsUnits += convQty; nat.rods += sticks; }
+        
         if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: CONVERSIONS[mat] };
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
@@ -95,7 +84,7 @@ export default function ForensicGradeV9() {
     });
 
     const entities = Object.values(registry).map(e => {
-      const pots = [e.tobacco, e.tow, e.paper].filter(v => v > 0);
+      const pots = [e.tobacco, e.tow, e.paper, e.rods].filter(v => v > 0);
       const minPot = pots.length > 0 ? Math.min(...pots) : 0;
       const hasZeroTobaccoViolation = e.actual > 0 && e.tobacco === 0;
       const thresholdMultiplier = 1 + (riskThreshold / 100);
@@ -112,7 +101,8 @@ export default function ForensicGradeV9() {
     const pools = [
         { name: 'Tobacco Leaf', val: nat.tobacco },
         { name: 'Acetate Tow', val: nat.tow },
-        { name: 'Cigarette Paper', val: nat.paper }
+        { name: 'Cigarette Paper', val: nat.paper },
+        { name: 'Filter Rods', val: nat.rods }
     ].filter(p => p.val > 0);
     const bottleneck = pools.length > 0 ? pools.reduce((p, c) => p.val < c.val ? p : c) : { name: 'None', val: 0 };
 
@@ -147,9 +137,7 @@ export default function ForensicGradeV9() {
   const saveReport = () => {
     if (!reportTitle || !auditResult) return;
     const newReport = {
-      id: Date.now(),
-      title: reportTitle,
-      date: new Date().toLocaleString(),
+      id: Date.now(), title: reportTitle, date: new Date().toLocaleString(),
       summary: { ...auditResult.nat, bottleneck: auditResult.bottleneck },
       entities: auditResult.entities
     };
@@ -161,13 +149,13 @@ export default function ForensicGradeV9() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-black p-6 lg:p-10 font-sans">
-      {/* HEADER SECTION */}
+      {/* HEADER */}
       <div className="max-w-[1600px] mx-auto mb-8 flex flex-col lg:flex-row items-center gap-6 bg-white border border-slate-300 p-6 rounded-2xl shadow-sm">
         <div className="flex items-center gap-4 mr-auto">
           <div className="bg-slate-900 p-3 rounded-xl shadow-lg"><ShieldAlert className="text-white" size={28}/></div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-black uppercase">Forensic Monitor <span className="text-blue-700">9.5</span></h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} className="text-emerald-600"/> Recovery Mode Active</p>
+            <h1 className="text-2xl font-black tracking-tight text-black uppercase">Forensic Monitor <span className="text-blue-700">9.6</span></h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1"><CheckCircle size={10} className="text-emerald-600"/> High Fidelity Engine</p>
           </div>
         </div>
         
@@ -183,7 +171,7 @@ export default function ForensicGradeV9() {
             {loading ? <RefreshCcw className="animate-spin" size={16}/> : 'Run Audit'}
           </button>
           {rawData.length > 0 && (
-            <button onClick={clearSession} className="bg-red-50 text-red-600 p-2.5 rounded-xl border border-red-200 hover:bg-red-600 hover:text-white transition-all shadow-sm" title="Clear Data">
+            <button onClick={clearSession} className="bg-red-50 text-red-600 p-2.5 rounded-xl border border-red-200 hover:bg-red-600 hover:text-white transition-all shadow-sm">
                 <Trash2 size={20}/>
             </button>
           )}
@@ -192,7 +180,6 @@ export default function ForensicGradeV9() {
 
       {auditResult && (
         <div className="max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
-          {/* NAVIGATION */}
           <div className="flex justify-between items-center border-b-2 border-slate-200">
             <div className="flex gap-10 text-sm font-black uppercase tracking-widest">
               <button onClick={() => setActiveTab('country')} className={`pb-4 transition-colors ${activeTab === 'country' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Country Intel</button>
@@ -228,14 +215,15 @@ export default function ForensicGradeV9() {
                         { name: 'Tobacco', val: Math.round(auditResult.nat.tobacco), fill: '#f59e0b' },
                         { name: 'Tow', val: Math.round(auditResult.nat.tow), fill: '#0ea5e9' },
                         { name: 'Paper', val: Math.round(auditResult.nat.paper), fill: '#64748b' },
+                        { name: 'Rods', val: Math.round(auditResult.nat.rods), fill: '#a855f7' },
                         { name: 'Exports', val: Math.round(auditResult.nat.actual), fill: '#10b981' }
                       ]}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                        <XAxis dataKey="name" fontSize={12} fontWeight="bold" />
-                        <YAxis fontSize={11} fontWeight="bold" tickFormatter={(v) => `${(v/1e6).toFixed(0)}M`} />
-                        <Tooltip />
+                        <XAxis dataKey="name" fontSize={12} fontWeight="bold" tickLine={false} axisLine={false} tick={{dy: 10}} />
+                        <YAxis fontSize={11} fontWeight="bold" tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1e6).toFixed(0)}M`} />
+                        <Tooltip formatter={(v) => [v.toLocaleString(), "Sticks"]} cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'}} />
                         <Bar dataKey="val" radius={[8, 8, 0, 0]} barSize={60}>
-                            { [0,1,2,3].map((e,i) => <Cell key={i} fill={['#f59e0b', '#0ea5e9', '#64748b', '#10b981'][i]} />) }
+                            { [0,1,2,3,4].map((e,i) => <Cell key={i} fill={['#f59e0b', '#0ea5e9', '#64748b', '#a855f7', '#10b981'][i]} />) }
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -249,6 +237,7 @@ export default function ForensicGradeV9() {
                       <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
                       <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
                       <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
+                      <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
                       <div className="py-4 border-y-2 border-slate-50">
                           <BalanceRow label="Cigarette Exports" kg={auditResult.nat.actual / CONVERSIONS.CIGARETTES_EXPORT} sticks={auditResult.nat.actual} unit="KG Gross" color="bg-emerald-600" ratio={CONVERSIONS.CIGARETTES_EXPORT} />
                       </div>
@@ -256,17 +245,63 @@ export default function ForensicGradeV9() {
                   </div>
                 </div>
               </div>
+
+              {/* MOVED: AUDIT GUIDE & ANALYSIS BELOW GRAPH */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-xl">
+                    <h2 className="text-sm font-black text-blue-400 uppercase tracking-widest mb-6 flex items-center gap-2"><Gavel size={20}/> National Forensic Analysis</h2>
+                    <div className="space-y-6 text-sm leading-relaxed text-blue-50 font-medium">
+                        <p>Total recorded exports stand at <span className="text-emerald-400 font-black">{Math.round(auditResult.nat.actual).toLocaleString()}</span> sticks. Based on raw material precursors, the maximum sustainable production is limited by <span className="text-blue-400 font-black underline uppercase">{auditResult.bottleneck.name}</span>.</p>
+                        <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+                           <p className="text-xs font-bold text-slate-400 uppercase mb-2">Verdict Summary</p>
+                           {auditResult.nat.actual > auditResult.nat.tobacco ? (
+                               <p className="text-red-400 font-bold italic flex gap-2"><AlertTriangle size={18}/> High Risk: Production exceeds tobacco leaf availability by {Math.round((auditResult.nat.actual/auditResult.nat.tobacco - 1)*100)}%.</p>
+                           ) : (
+                               <p className="text-emerald-400 font-bold flex gap-2"><CheckCircle size={18}/> Balanced: National precursor imports sufficient for recorded exports.</p>
+                           )}
+                        </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border-2 border-slate-200 p-10 rounded-[2.5rem]">
+                    <h2 className="text-sm font-black text-black uppercase tracking-widest mb-6 flex items-center gap-2"><HelpCircle size={20} className="text-blue-700"/> Audit Interpretation Guide</h2>
+                    <div className="grid grid-cols-1 gap-4">
+                        <div className="flex gap-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                            <CheckCircle className="text-emerald-600 shrink-0" size={20}/>
+                            <div>
+                                <p className="text-xs font-black text-emerald-900 uppercase">RECONCILED</p>
+                                <p className="text-[11px] font-bold text-emerald-700">Exports are within {riskThreshold}% of the lowest precursor limit. Supply chain is mathematically verified.</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-4 p-4 bg-red-50 rounded-2xl border border-red-100">
+                            <AlertTriangle className="text-red-600 shrink-0" size={20}/>
+                            <div>
+                                <p className="text-xs font-black text-red-900 uppercase">CRITICAL (Over-Cap)</p>
+                                <p className="text-[11px] font-bold text-red-700 text-balance">Production exceeds available raw materials. Indicates "Shadow Factories" or undocumented material sourcing.</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-4 p-4 bg-orange-50 rounded-2xl border border-orange-100">
+                            <Activity className="text-orange-600 shrink-0" size={20}/>
+                            <div>
+                                <p className="text-xs font-black text-orange-900 uppercase">CRITICAL (Zero-Tobacco)</p>
+                                <p className="text-[11px] font-bold text-orange-700">Finished cigarettes exported with zero matching leaf records. Pure illicit supply chain signal.</p>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+              </div>
             </div>
           ) : activeTab === 'entities' ? (
-            <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                         <input className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-12 pr-4 text-sm font-bold focus:border-blue-600 outline-none" placeholder="Filter by Entity Name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                     </div>
                     <div className="flex gap-8 px-6 border-l border-slate-100">
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Filtered Actual</p><p className="text-lg font-black text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</p></div>
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Active Records</p><p className="text-lg font-black text-blue-700">{filteredSums.tx}</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Actual Total</p><p className="text-lg font-black text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Potential Cap</p><p className="text-lg font-black text-slate-800">{Math.round(filteredSums.potential).toLocaleString()}</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Transactions</p><p className="text-lg font-black text-blue-700">{filteredSums.tx}</p></div>
                     </div>
                 </div>
 
@@ -274,12 +309,12 @@ export default function ForensicGradeV9() {
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-900 text-white uppercase font-black tracking-widest text-[10px]">
                     <tr>
-                      <th className="p-8">Entity Name</th>
-                      <th className="p-8 text-center">Transactions</th>
-                      <th className="p-8">Inventory Items</th>
+                      <th className="p-8">Entity Analysis</th>
+                      <th className="p-8 text-center">TX Count</th>
+                      <th className="p-8">Calculated Inventory (Sticks Eq)</th>
                       <th className="p-8 text-right">Potential Cap</th>
                       <th className="p-8 text-right text-emerald-400">Actual Exports</th>
-                      <th className="p-8 text-center">Verdict</th>
+                      <th className="p-8 text-center">Audit Verdict</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y-2 divide-slate-100">
@@ -290,9 +325,19 @@ export default function ForensicGradeV9() {
                         <td className="p-8">
                           <div className="flex flex-wrap gap-2">
                             {Object.entries(e.materials).map(([m, s]) => (
-                              <div key={m} className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2">
+                              <div key={m} className="group/pop relative bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 cursor-help hover:border-blue-600 transition-all">
                                 {Icons[m]}
                                 <span className="font-mono text-black font-bold text-[11px]">{Math.round(s.rawQty).toLocaleString()} {s.unit}</span>
+                                <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-3 z-50 transition-all">
+                                  <div className="bg-slate-950 text-white p-5 rounded-2xl shadow-2xl min-w-[240px] border border-slate-800">
+                                    <p className="text-blue-400 font-black text-[10px] uppercase mb-2 pb-1 border-b border-slate-800">{m} Forensic Calc</p>
+                                    <div className="space-y-1 font-mono text-[10px]">
+                                      <div className="flex justify-between"><span>Input Qty:</span> <span>{s.rawQty.toLocaleString()} {s.unit}</span></div>
+                                      <div className="flex justify-between"><span>Conv Factor:</span> <span>x {s.ratioUsed.toLocaleString()}</span></div>
+                                      <div className="flex justify-between pt-2 border-t border-slate-800 font-black text-emerald-400"><span>Stick Balance:</span> <span>{Math.round(s.sticks).toLocaleString()}</span></div>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -300,9 +345,25 @@ export default function ForensicGradeV9() {
                         <td className="p-8 text-right font-mono font-bold">{Math.round(e.minPot).toLocaleString()}</td>
                         <td className="p-8 text-right font-mono font-black text-lg">{Math.round(e.actual).toLocaleString()}</td>
                         <td className="p-8 text-center">
-                              <span className={`px-6 py-2 rounded-full text-[10px] font-black tracking-widest border-2 uppercase ${e.risk === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
-                                  {e.risk}
+                           <div className="group/risk relative inline-block">
+                              <span className={`px-6 py-2 rounded-full text-[10px] font-black tracking-widest border-2 flex items-center gap-2 uppercase ${e.risk === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
+                                  {e.risk === 'CRITICAL' ? <AlertTriangle size={12}/> : <CheckCircle size={12}/>} {e.risk}
                               </span>
+                              <div className="invisible group-hover/risk:visible opacity-0 group-hover/risk:opacity-100 absolute bottom-full right-0 mb-4 z-50 w-80 transition-all text-left">
+                                <div className={`bg-white border-2 p-6 rounded-2xl shadow-2xl ${e.risk === 'CRITICAL' ? 'border-red-500' : 'border-emerald-500'}`}>
+                                  <p className={`${e.risk === 'CRITICAL' ? 'text-red-700' : 'text-emerald-700'} font-black text-xs mb-2 uppercase flex items-center gap-2`}><Info size={16}/> Evidence Log</p>
+                                  <p className="text-xs text-black leading-relaxed font-bold">
+                                    {e.risk === 'CRITICAL' ? (
+                                        e.violationType === 'ZERO_TOBACCO' 
+                                        ? "CRITICAL: Entity is exporting finished sticks but has zero recorded tobacco leaf imports. Suggests undisclosed illicit sourcing."
+                                        : `CRITICAL: Actual exports exceed supply-chain potential by ${Math.round((e.actual/e.minPot - 1)*100)}%, surpassing the ${riskThreshold}% threshold.`
+                                    ) : (
+                                        "RECONCILED: Entity exports are mathematically balanced against recorded precursor material imports."
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                           </div>
                         </td>
                       </tr>
                     ))}
@@ -348,7 +409,8 @@ function SummaryBox({ title, val, sub, color, isText }) {
 
 function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
   return (
-    <div className="flex justify-between items-end">
+    <div className="group relative">
+      <div className="flex justify-between items-end cursor-help">
         <div className="flex items-center gap-4">
           <div className={`w-1.5 h-10 rounded-full ${color}`}/>
           <div>
@@ -361,5 +423,14 @@ function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
             <p className="text-[8px] font-bold uppercase text-slate-400">STICKS EQ</p>
         </div>
       </div>
+      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute left-0 bottom-full mb-3 z-50 transition-all">
+         <div className="bg-slate-900 text-white p-4 rounded-xl shadow-xl text-[10px] font-mono min-w-[200px]">
+            <p className="text-blue-400 font-black uppercase mb-1 border-b border-slate-700 pb-1">{label} Audit Logic</p>
+            <div className="flex justify-between"><span>Raw Input:</span> <span>{Math.round(kg).toLocaleString()} {unit}</span></div>
+            <div className="flex justify-between"><span>Factor:</span> <span>x {ratio}</span></div>
+            <div className="flex justify-between pt-1 border-t border-slate-700 text-emerald-400 font-black"><span>Stick Capacity:</span> <span>{Math.round(sticks).toLocaleString()}</span></div>
+         </div>
+      </div>
+    </div>
   );
 }
