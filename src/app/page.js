@@ -2,14 +2,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Gavel, Zap } from 'lucide-react';
+import { ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, Sliders, CheckCircle, Target, Gavel } from 'lucide-react';
 
 const CONVERSIONS = {
-  'TOBACCO': 1333.33, // 0.75g tobacco per stick
-  'TOW': 8333.33, 
-  'PAPER': 20000, 
-  'RODS': 6,
-  'CIGARETTES_EXPORT': 1000, // 1.0g total stick weight (Gross)
+  'TOBACCO': 1333.33, 'TOW': 8333.33, 'PAPER': 20000, 'RODS': 6,
+  'CIGARETTES_WT': 1333.33,
   'UNITS': { 'MIL': 1000, 'KGM': 1, 'KG': 1, 'TON': 1000, 'MT': 1000, 'CASE': 10000, 'PIECE': 1 }
 };
 
@@ -60,11 +57,11 @@ export default function ForensicGradeV9() {
       registry[entity].tx += 1;
 
       if (mat === 'CIGARETTES') {
-        // CORRECTED MATH: Cigarette Export Weight is 1000 sticks/kg (includes non-tobacco components)
-        let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * CONVERSIONS.CIGARETTES_EXPORT : convQty;
+        // FIXED MATH: Ensure Kg to sticks conversion uses the standard 1333.33 ratio
+        let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * CONVERSIONS.CIGARETTES_WT : convQty;
         registry[entity].actual += sticks;
         nat.actual += sticks;
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: (unit === 'MIL' ? 1000000 : CONVERSIONS.CIGARETTES_EXPORT) };
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: (unit === 'MIL' ? 1000000 : CONVERSIONS.CIGARETTES_WT) };
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
       } else if (mat && CONVERSIONS[mat]) {
@@ -96,13 +93,13 @@ export default function ForensicGradeV9() {
       };
     }).sort((a, b) => b.actual - a.actual);
 
-    // Summary Analysis
-    const precursorPool = [
+    // Summary Analysis: Identifies strictness of precursor supply
+    const pools = [
         { name: 'Tobacco Leaf', val: nat.tobacco },
         { name: 'Acetate Tow', val: nat.tow },
         { name: 'Cigarette Paper', val: nat.paper }
     ].filter(p => p.val > 0);
-    const bottleneck = precursorPool.length > 0 ? precursorPool.reduce((p, c) => p.val < c.val ? p : c) : { name: 'None', val: 0 };
+    const bottleneck = pools.length > 0 ? pools.reduce((p, c) => p.val < c.val ? p : c) : { name: 'N/A', val: 0 };
 
     return { entities, nat, bottleneck, tobaccoCeiling: nat.tobacco };
   }, [rawData, riskThreshold]);
@@ -115,9 +112,8 @@ export default function ForensicGradeV9() {
   const filteredSums = useMemo(() => {
     return filteredEntities.reduce((acc, curr) => ({
         actual: acc.actual + curr.actual,
-        potential: acc.potential + curr.minPot,
-        tx: acc.tx + curr.tx
-    }), { actual: 0, potential: 0, tx: 0 });
+        potential: acc.potential + curr.minPot
+    }), { actual: 0, potential: 0 });
   }, [filteredEntities]);
 
   const sync = () => {
@@ -163,39 +159,46 @@ export default function ForensicGradeV9() {
               <button onClick={() => setActiveTab('entities')} className={`pb-4 transition-colors ${activeTab === 'entities' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Target Analysis</button>
               <button onClick={() => setActiveTab('reports')} className={`pb-4 transition-colors ${activeTab === 'reports' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400 hover:text-black'}`}>Archived Reports</button>
             </div>
+            {activeTab !== 'reports' && (
+              <div className="flex gap-3 pb-4">
+                <input className="bg-white border-2 border-slate-200 rounded-xl px-4 py-1.5 text-xs font-black text-black" placeholder="Snapshot Title..." value={reportTitle} onChange={e => setReportTitle(e.target.value)} />
+                <button onClick={() => {if(reportTitle) setReports([{id:Date.now(), title:reportTitle, data:auditResult, date:new Date().toLocaleString()}, ...reports])}} className="flex items-center gap-2 bg-emerald-700 text-white px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-800 shadow-sm transition-all"><Save size={16}/> Save Report</button>
+              </div>
+            )}
           </div>
 
           {activeTab === 'country' ? (
             <div className="space-y-10">
               {/* Summary Analysis Section */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm">
                   <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Tobacco Ceiling</p>
-                  <p className="text-2xl font-black text-amber-700">{Math.round(auditResult.tobaccoCeiling).toLocaleString()}</p>
-                  <p className="text-[10px] font-bold text-slate-500 mt-1">CAP BY RAW LEAF</p>
+                  <div className="flex items-end gap-3">
+                    <p className="text-3xl font-black text-amber-700">{Math.round(auditResult.tobaccoCeiling).toLocaleString()}</p>
+                    <p className="text-[10px] font-bold text-slate-500 pb-1">MAX STICKS FROM LEAF</p>
+                  </div>
                 </div>
                 <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Precursor Bottleneck</p>
-                  <p className="text-2xl font-black text-blue-700 uppercase">{auditResult.bottleneck.name}</p>
-                  <p className="text-[10px] font-bold text-slate-500 mt-1">STRICTEST SUPPLY LOG</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Supply Chain Bottleneck</p>
+                  <div className="flex items-end gap-3">
+                    <p className="text-3xl font-black text-blue-700 uppercase">{auditResult.bottleneck.name}</p>
+                    <p className="text-[10px] font-bold text-slate-500 pb-1">STRICTEST COMPONENT</p>
+                  </div>
                 </div>
-                <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Production Gap</p>
-                  <p className="text-2xl font-black text-red-600">
-                      {Math.max(0, Math.round(auditResult.nat.actual - auditResult.nat.tobacco)).toLocaleString()}
-                  </p>
-                  <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase">Sticks over leaf</p>
-                </div>
-                <div className="bg-slate-900 p-6 rounded-3xl shadow-lg flex flex-col justify-center">
-                    <div className="flex items-center gap-2 mb-1"><Zap size={14} className="text-yellow-400"/><p className="text-[10px] font-black text-white uppercase">System Health</p></div>
-                    <p className="text-2xl font-black text-white">{auditResult.nat.tobacco > 0 ? Math.round((auditResult.nat.actual/auditResult.nat.tobacco)*100) : 0}%</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Export vs Leaf Intake</p>
+                <div className="bg-slate-900 border-2 border-slate-800 p-6 rounded-3xl shadow-lg">
+                  <p className="text-[10px] font-black text-blue-400 uppercase mb-2">Aggregate Deficit</p>
+                  <div className="flex items-end gap-3">
+                    <p className="text-3xl font-black text-white">
+                        {Math.max(0, Math.round(auditResult.nat.actual - auditResult.nat.tobacco)).toLocaleString()}
+                    </p>
+                    <p className="text-[10px] font-bold text-slate-400 pb-1 uppercase">Sticks over supply</p>
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 <div className="lg:col-span-8 bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
-                  <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> Forensic Supply Matrix</h2>
+                  <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> Production vs. Precursor Matrix</h2>
                   <div className="h-[450px]">
                     <ResponsiveContainer>
                       <BarChart data={[
@@ -203,7 +206,7 @@ export default function ForensicGradeV9() {
                         { name: 'Tow', val: Math.round(auditResult.nat.tow), fill: '#0ea5e9' },
                         { name: 'Paper', val: Math.round(auditResult.nat.paper), fill: '#64748b' },
                         { name: 'Rods', val: Math.round(auditResult.nat.rods), fill: '#a855f7' },
-                        { name: 'Exports', val: Math.round(auditResult.nat.actual), fill: '#10b981' }
+                        { name: 'Cigarette Exports', val: Math.round(auditResult.nat.actual), fill: '#10b981' }
                       ]}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                         <XAxis dataKey="name" fontSize={12} fontWeight="bold" tick={{fill: '#000'}} tickLine={false} axisLine={false} tick={{dy: 10}} />
@@ -221,21 +224,23 @@ export default function ForensicGradeV9() {
                   <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
                     <h2 className="text-xs font-black text-blue-700 uppercase tracking-widest border-b-2 border-slate-50 pb-5 mb-8">Forensic Balance Sheet</h2>
                     <div className="space-y-6">
-                      <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
+                      <BalanceRow label="Tobacco" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
                       <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
                       <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
+                      <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
                       <div className="py-4 border-y-2 border-slate-50">
-                          <BalanceRow label="Cigarette Exports" kg={auditResult.nat.actual / CONVERSIONS.CIGARETTES_EXPORT} sticks={auditResult.nat.actual} unit="KG Gross" color="bg-emerald-600" ratio={CONVERSIONS.CIGARETTES_EXPORT} />
+                          <BalanceRow label="Cigarette Exports" kg={auditResult.nat.actual / 1333.33} sticks={auditResult.nat.actual} unit="KG Eqv" color="bg-emerald-600" ratio={1333.33} />
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-blue-900 text-white p-8 rounded-[2.5rem] shadow-xl">
-                    <h2 className="text-xs font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Gavel size={16}/> Audit Standards</h2>
-                    <ul className="space-y-4 text-[11px] font-bold leading-relaxed text-blue-100">
-                        <li>• <span className="text-white">Tobacco Ratio:</span> $1\text{kg} = 1333.33\text{ sticks}$ (Assuming $0.75\text{g}$ net tobacco fill).</li>
-                        <li>• <span className="text-white">Export Ratio:</span> $1\text{kg} = 1000\text{ sticks}$ (Gross weight including paper and filter).</li>
-                        <li>• <span className="text-white">Bottleneck:</span> Legitimate export volume should not exceed the lowest precursor cap.</li>
+                  {/* Audit Guide */}
+                  <div className="bg-blue-50 border-2 border-blue-100 p-8 rounded-[2.5rem]">
+                    <h2 className="text-xs font-black text-blue-800 uppercase tracking-widest mb-4 flex items-center gap-2"><Gavel size={16}/> Audit Standards</h2>
+                    <ul className="space-y-3 text-[11px] font-bold text-blue-900 leading-relaxed">
+                        <li>• <span className="text-blue-600 uppercase">Tobacco Ceiling:</span> Absolute limit of sticks produced from declared leaf ($1\text{kg} = 1333\text{ sticks}$).</li>
+                        <li>• <span className="text-blue-600 uppercase">Bottleneck:</span> Supply chain security is determined by the precursor with the lowest volume.</li>
+                        <li>• <span className="text-blue-600 uppercase">Recheck:</span> Weight-to-stick ratios are hard-locked at 0.75g per stick.</li>
                     </ul>
                   </div>
                 </div>
@@ -243,19 +248,26 @@ export default function ForensicGradeV9() {
             </div>
           ) : activeTab === 'entities' ? (
             <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
+                {/* Search and Summary Bar */}
+                <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-3xl border border-slate-200">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                         <input 
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-12 pr-4 text-sm font-bold focus:border-blue-600 outline-none"
-                            placeholder="Search Entity Name..."
+                            placeholder="Search by Entity Name..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                     <div className="flex gap-8 px-6 border-l border-slate-100">
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Filtered Actual</p><p className="text-lg font-black text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</p></div>
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Filtered Potential</p><p className="text-lg font-black text-slate-800">{Math.round(filteredSums.potential).toLocaleString()}</p></div>
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase">Filtered Actual</p>
+                            <p className="text-lg font-black text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase">Filtered Potential</p>
+                            <p className="text-lg font-black text-slate-800">{Math.round(filteredSums.potential).toLocaleString()}</p>
+                        </div>
                     </div>
                 </div>
 
@@ -284,7 +296,7 @@ export default function ForensicGradeV9() {
                                 <span className="font-mono text-black font-black text-sm">{Math.round(s.rawQty).toLocaleString()} <span className="text-[10px] text-black font-bold">{s.unit}</span></span>
                                 <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-4 z-50 transition-all">
                                   <div className="bg-slate-950 text-white p-6 rounded-2xl shadow-2xl min-w-[260px] border border-slate-800">
-                                    <p className="text-blue-400 font-black text-[11px] uppercase mb-3 border-b border-slate-800 pb-2">{m} Forensic Ratio</p>
+                                    <p className="text-blue-400 font-black text-[11px] uppercase mb-3 border-b border-slate-800 pb-2">{m} Conversion Math</p>
                                     <div className="space-y-2 font-mono text-xs">
                                       <div className="flex justify-between"><span>Input:</span> <span className="text-white font-bold">{s.rawQty.toLocaleString()} {s.unit}</span></div>
                                       <div className="flex justify-between"><span>Multiplier:</span> <span className="text-white font-bold">x {s.ratioUsed.toLocaleString()}</span></div>
@@ -306,14 +318,17 @@ export default function ForensicGradeV9() {
                               </span>
                               <div className="invisible group-hover/risk:visible opacity-0 group-hover/risk:opacity-100 absolute bottom-full right-0 mb-4 z-50 w-80 transition-all text-left">
                                 <div className={`bg-white border-2 p-6 rounded-2xl shadow-2xl ${e.risk === 'CRITICAL' ? 'border-red-500' : 'border-emerald-500'}`}>
-                                  <p className={`${e.risk === 'CRITICAL' ? 'text-red-700' : 'text-emerald-700'} font-black text-xs mb-2 uppercase tracking-widest flex items-center gap-2`}><Info size={16}/> Logic Summary</p>
+                                  <p className={`${e.risk === 'CRITICAL' ? 'text-red-700' : 'text-emerald-700'} font-black text-xs mb-2 uppercase tracking-widest flex items-center gap-2`}>
+                                      {e.risk === 'CRITICAL' ? <AlertTriangle size={18}/> : <CheckCircle size={18}/>} 
+                                      Audit Logic Guide
+                                  </p>
                                   <p className="text-xs text-black leading-relaxed font-bold">
                                     {e.risk === 'CRITICAL' ? (
                                         e.violationType === 'ZERO_TOBACCO' 
-                                        ? "CRITICAL: Exporting finished sticks with 0 recorded tobacco imports. Indicates shadow-sourced raw material."
-                                        : `CRITICAL: Export volume exceeds precursor cap by ${Math.round((e.actual/e.minPot - 1)*100)}%.`
+                                        ? "Violation: Production recorded without any primary tobacco leaf imports. Suggests illicit sourcing."
+                                        : `Violation: Production exceeds theoretical cap by ${Math.round((e.actual/e.minPot - 1)*100)}%, exceeding your threshold.`
                                     ) : (
-                                        "RECONCILED: Production is mathematically supported by the recorded precursor inventory."
+                                        "Reconciled: Production volume is fully supported by documented precursor inventory. Low risk of shadow-sourcing."
                                     )}
                                   </p>
                                 </div>
@@ -323,16 +338,6 @@ export default function ForensicGradeV9() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                    <tr className="font-black">
-                        <td className="p-8 uppercase text-xs">Total Filtered Metrics</td>
-                        <td className="p-8 text-center font-mono">{filteredSums.tx}</td>
-                        <td className="p-8"></td>
-                        <td className="p-8 text-right font-mono">{Math.round(filteredSums.potential).toLocaleString()}</td>
-                        <td className="p-8 text-right font-mono text-emerald-700">{Math.round(filteredSums.actual).toLocaleString()}</td>
-                        <td className="p-8"></td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             </div>
@@ -364,15 +369,15 @@ function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
         <div className="flex items-center gap-4">
           <div className={`w-1.5 h-10 rounded-full ${color}`}/>
           <div>
-            <p className="text-xs font-black uppercase tracking-widest mb-1 text-slate-500">{label}</p>
-            <p className="text-lg font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-xs font-bold uppercase">{unit}</span></p>
+            <p className="text-xs text-slate-500 font-black uppercase tracking-widest mb-1">{label}</p>
+            <p className="text-lg font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-xs text-slate-400 font-bold uppercase">{unit}</span></p>
           </div>
         </div>
         <p className="text-sm font-black text-blue-700 font-mono">{Math.round(sticks).toLocaleString()} sticks</p>
       </div>
       <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute left-0 bottom-full mb-3 z-50 transition-all">
          <div className="bg-slate-900 text-white p-4 rounded-xl shadow-xl text-[11px] font-mono min-w-[200px]">
-            <p className="text-blue-400 font-black uppercase mb-1 border-b border-slate-700 pb-1">{label} Ratio</p>
+            <p className="text-blue-400 font-black uppercase mb-1 border-b border-slate-700 pb-1">{label} Math</p>
             <div className="flex justify-between"><span>Input:</span> <span>{Math.round(kg).toLocaleString()}</span></div>
             <div className="flex justify-between"><span>Ratio:</span> <span>x {ratio}</span></div>
             <div className="flex justify-between pt-1 border-t border-slate-700 text-emerald-400 font-black"><span>Total Eq:</span> <span>{Math.round(sticks).toLocaleString()}</span></div>
