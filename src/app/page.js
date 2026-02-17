@@ -286,7 +286,7 @@ export default function ForensicGradeV12() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* LEFT PANEL: NATIONAL FORENSIC ANALYSIS */}
-          <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+<div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
                         <p className="text-xs font-bold text-slate-400 uppercase mb-2">Verdict Summary</p>
                         {auditResult.nat.actual > auditResult.nat.tobacco ? (
                             <p className="text-red-400 font-bold italic flex gap-2">
@@ -297,9 +297,9 @@ export default function ForensicGradeV12() {
                                 <CheckCircle size={18}/> Reconciled: National production volumes are within the legal precursor envelope.
                             </p>
                         )}
-                    </div> {/* This closes the Verdict Summary Box */}
-                </div> {/* This closes the spacing container for the Forensic Analysis text */}
-            </div> {/* This closes the Dark Blue Forensic Panel */}
+                    </div> {/* <--- Fix 1: Close the Summary Box AFTER the logic */}
+                </div> {/* <--- Fix 2: Close the Inner Content Div */}
+            </div> {/* <--- Fix 3: Close the Dark Blue Panel */}
 
             {/* RIGHT PANEL: COMPLIANCE RATIOS */}
             <div className="bg-white border-2 border-slate-200 p-10 rounded-[2.5rem] shadow-sm flex flex-col justify-center">
