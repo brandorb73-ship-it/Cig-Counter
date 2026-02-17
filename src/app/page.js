@@ -1,4 +1,10 @@
 "use client";
+import React, { useState, useEffect, useMemo } from 'react';
+import Papa from 'papaparse';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  Cell, PieChart, Pie, Legend 
+} from 'recharts';
 import { 
   ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, 
   Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, 
@@ -6,16 +12,26 @@ import {
   ChevronRight, HelpCircle, Landmark, TrendingUp, Fingerprint, EyeOff 
 } from 'lucide-react';
 
-// 1. Move static data outside the component
-const DEFAULT_CONVERSIONS = {
-  TOBACCO: 1333.33,
-  TOW: 8333.33,
-  PAPER: 20000,
-  RODS: 6,
-  CIGARETTES_EXPORT: 1000,
-  CIGARETTES_MIL: 1000000,
-  TAX_PER_STICK: 0.15,
-  UNITS: { 'KG': 1, 'KGM': 1, 'TON': 1000, 'MT': 1000, 'LB': 0.4535, 'MIL': 1 }
+const CONVERSIONS = {
+  'TOBACCO': 1333.33, 
+  'TOW': 8333.33, 
+  'PAPER': 20000, 
+  'RODS': 6,
+  'CIGARETTES_EXPORT': 1000, 
+  'TAX_PER_STICK': 0.15,
+ 'UNITS': { 
+  'MIL': 1000, 
+  'KGM': 1, 
+  'KG': 1, 
+  'TON': 1000, 
+  'MT': 1000, 
+  'CASE': 10000, 
+  'PIECE': 1,
+  'BOX': 200,      // Standard outer box (10 packs)
+  'PACK': 20,      // Standard pack of 20
+  'BAG': 20,       // Often used for loose/RYO equivalent
+  'STICK': 1 
+}
 };
 
 const Icons = {
@@ -25,14 +41,11 @@ const Icons = {
   'RODS': <Pipette className="text-purple-700" size={18} />,
   'CIGARETTES': <Activity className="text-emerald-700" size={18} />
 };
-
 const formatValue = (value) => new Intl.NumberFormat('en-US', { 
   notation: "compact", 
   compactDisplay: "short" 
 }).format(value);
-
 export default function ObsidianPrimeV12Final() {
-  // 3. ALL HOOKS MUST BE AT THE TOP OF THE FUNCTION
   const [url, setUrl] = useState('');
   const [rawData, setRawData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -41,9 +54,7 @@ export default function ObsidianPrimeV12Final() {
   const [reportTitle, setReportTitle] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [riskThreshold, setRiskThreshold] = useState(10);
-  
-  // SINGLE state definition for conversions
-  const [localConversions, setLocalConversions] = useState(DEFAULT_CONVERSIONS);
+  const [localConversions, setLocalConversions] = useState(CONVERSIONS);
 
   useEffect(() => {
     try {
@@ -56,114 +67,83 @@ export default function ObsidianPrimeV12Final() {
     if(window.confirm("CRITICAL: Wipe current audit?")) { setRawData([]); setUrl(''); }
   };
 
-const auditResult = useMemo(() => {
+  const auditResult = useMemo(() => {
     if (!rawData || rawData.length === 0) return null;
-    
     const registry = {};
-    // Initialize nat with trackers for both Sticks and raw Physical volume
-    let nat = { 
-      tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, 
-      tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 
-    };
+    let nat = { tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 };
 
- // 1. Process Raw Data Loop
     rawData.forEach(row => {
       const entity = row.Entity || row.Importer || row.Exporter;
       if (!entity) return;
-      if (!registry[entity]) {
-        registry[entity] = { name: entity, tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, materials: {}, tx: 0 };
-      }
-      
+      if (!registry[entity]) registry[entity] = { name: entity, tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, materials: {}, tx: 0 };
       const mR = (row.Material || '').toUpperCase();
       const mat = mR.includes('TOBACCO') ? 'TOBACCO' : mR.includes('TOW') ? 'TOW' : 
                   mR.includes('PAPER') ? 'PAPER' : mR.includes('ROD') ? 'RODS' : 
                   (mR.includes('CIGARETTE') && !mR.includes('PAPER')) ? 'CIGARETTES' : null;
-      
       const qty = parseFloat(String(row.Quantity).replace(/,/g, '')) || 0;
       const unit = (row['Quantity Unit'] || '').toUpperCase().trim();
-      const factor = localConversions.UNITS[unit] || 1;
+      const factor = CONVERSIONS.UNITS[unit] || 1;
       const convQty = qty * factor;
       registry[entity].tx += 1;
 
-      // START OF CONDITIONAL BLOCK
       if (mat === 'CIGARETTES') {
-        let sticks = (unit === 'MIL') 
-          ? qty * localConversions.CIGARETTES_MIL 
-          : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) 
-            ? convQty * localConversions.CIGARETTES_EXPORT 
-            : convQty;
-            
+        let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * CONVERSIONS.CIGARETTES_EXPORT : convQty;
         registry[entity].actual += sticks;
         nat.actual += sticks;
-        
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: (unit === 'MIL' ? 1000000 : CONVERSIONS.CIGARETTES_EXPORT) };
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
-
-      } else if (mat && localConversions[mat]) {
-        const sticks = convQty * localConversions[mat];
-        const key = mat.toLowerCase();
-        
-        // Update Entity Registry
-        registry[entity][key] += sticks;
-        
-        // Update National Ledger Weights
+      } else if (mat && CONVERSIONS[mat]) {
+        const sticks = convQty * CONVERSIONS[mat];
+        registry[entity][mat.toLowerCase()] += sticks;
         if (mat === 'TOBACCO') { nat.tobaccoKg += convQty; nat.tobacco += sticks; }
         if (mat === 'TOW') { nat.towKg += convQty; nat.tow += sticks; }
         if (mat === 'PAPER') { nat.paperKg += convQty; nat.paper += sticks; }
         if (mat === 'RODS') { nat.rodsUnits += convQty; nat.rods += sticks; }
-
-        // Populate materials for Target Analytics tab
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: CONVERSIONS[mat] };
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
       }
-    }); // END of forEach
-    // 2. National Logic
-    const currentNatGap = Math.max(0, nat.actual - nat.tobacco);
-    
-    // Bottleneck logic: finds the material with the lowest stick potential
-    const currentBottleneck = [
-      { name: 'Tobacco', val: nat.tobacco },
-      { name: 'Tow', val: nat.tow },
-      { name: 'Paper', val: nat.paper },
-      { name: 'Rods', val: nat.rods }
-    ].filter(p => p.val > 0).reduce((prev, curr) => (prev.val < curr.val ? prev : curr), { name: 'No Precursors Found', val: 0 });
+    });
 
-    // 3. Entity Mapping
     const entities = Object.values(registry).map(e => {
       const pots = [e.tobacco, e.tow, e.paper, e.rods].filter(v => v > 0);
       const minPot = pots.length > 0 ? Math.min(...pots) : 0;
+      const thresholdMultiplier = 1 + (riskThreshold / 100);
+      const variance = pots.length > 0 ? ((Math.max(...pots) - minPot) / Math.max(...pots)) * 100 : 0;
+      const reliability = Math.max(0, 100 - variance);
       const productionGap = Math.max(0, e.actual - minPot);
-      const isCritical = (e.actual > 0 && e.tobacco === 0) || (e.actual > (minPot * (1 + riskThreshold/100)));
+      const taxRisk = productionGap * CONVERSIONS.TAX_PER_STICK;
+      const isCritical = (e.actual > 0 && e.tobacco === 0) || (e.actual > (minPot * thresholdMultiplier));
       
       return { 
-        ...e, 
-        minPot, 
-        productionGap,
-        taxRisk: productionGap * localConversions.TAX_PER_STICK,
-        reliability: pots.length > 0 ? Math.max(0, 100 - (((Math.max(...pots) - minPot) / Math.max(...pots)) * 100)) : 0,
-        risk: isCritical ? 'CRITICAL' : 'RECONCILED'
+        ...e, minPot, reliability, taxRisk, productionGap,
+        risk: isCritical ? 'CRITICAL' : 'RECONCILED',
+        violationType: (e.actual > 0 && e.tobacco === 0) ? 'ZERO_TOBACCO' : (e.actual > (minPot * thresholdMultiplier)) ? 'OVER_CAP' : 'NONE'
       };
     }).sort((a, b) => b.actual - a.actual);
 
-    // 4. Final Data Return
+    const natGap = Math.max(0, nat.actual - nat.tobacco);
+    const leakageData = [
+      { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
+      { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' },
+      { name: 'Paper Deficit', value: Math.max(0, nat.actual - nat.paper), fill: '#64748b' },
+      { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
+    ].filter(d => d.value > 0);
+
     return { 
-      entities, 
-      nat, 
-      productionGap: currentNatGap, 
-      leakageData: [
-        { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
-        { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' },
-        { name: 'Paper Deficit', value: Math.max(0, nat.actual - nat.paper), fill: '#64748b' },
-        { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
-      ].filter(d => d.value > 0),
-      shadowProb: nat.actual > 0 ? Math.min(100, (currentNatGap / nat.actual) * 100) : 0,
-      bottleneck: currentBottleneck,
-      taxLoss: currentNatGap * localConversions.TAX_PER_STICK 
+      entities, nat, productionGap: natGap, leakageData,
+      shadowProb: nat.actual > 0 ? Math.min(100, (natGap / nat.actual) * 100) : 0,
+     bottleneck: [
+  { name: 'Tobacco', val: nat.tobacco },
+  { name: 'Tow', val: nat.tow },
+  { name: 'Paper', val: nat.paper },
+  { name: 'Rods', val: nat.rods }
+].filter(p => p.val > 0).reduce((prev, curr) => (prev.val < curr.val ? prev : curr), { name: 'No Precursors Found', val: 0 }),
+      taxLoss: natGap * CONVERSIONS.TAX_PER_STICK 
     };
-  }, [rawData, riskThreshold, localConversions]);
-  
+  }, [rawData, riskThreshold]);
+
   const filteredEntities = useMemo(() => {
     return (auditResult?.entities || []).filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [auditResult, searchTerm]);
@@ -342,7 +322,7 @@ const auditResult = useMemo(() => {
     <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={localConversions.TOW} />
     <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={localConversions.PAPER} />
     <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={localConversions.RODS} />
-    <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / (localConversions.CIGARETTES_EXPORT || 1000)} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={localConversions.CIGARETTES_EXPORT} />
+    <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / 1000} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={1000} />
   </div>
 </div>
 
@@ -395,45 +375,20 @@ const auditResult = useMemo(() => {
                             </div>
                         </td>
                         <td className="p-8">
-  <div className="flex flex-wrap gap-2">
-    {Object.entries(e.materials).map(([m, s]) => {
-      // 1. Determine the correct ratio to display based on material type and unit
-      let ratioKey = m;
-      if (m === 'CIGARETTES') {
-        ratioKey = s.unit === 'MIL' ? 'CIGARETTES_MIL' : 'CIGARETTES_EXPORT';
-      }
-      const activeRatio = localConversions[ratioKey] || 0;
-
-      return (
-        <div key={m} className="group/pop relative bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 cursor-help shadow-sm">
-          {Icons[m]} 
-          <span className="font-mono text-black font-bold text-[11px]">
-            {Math.round(s.rawQty).toLocaleString()}
-          </span>
-
-          {/* Conversion Log Tooltip */}
-          <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-3 z-[60] bg-slate-950 text-white p-4 rounded-xl shadow-2xl min-w-[220px] border border-slate-800 transition-all">
-            <p className="text-blue-400 font-black text-[10px] uppercase mb-2 flex items-center gap-2 border-b border-slate-700 pb-1">
-              <Calculator size={12}/> Conversion Log
-            </p>
-            <div className="flex justify-between font-mono text-[10px] mb-1">
-              <span>Raw Input:</span> 
-              <span>{Math.round(s.rawQty).toLocaleString()} {s.unit}</span>
-            </div>
-            <div className="flex justify-between font-mono text-[10px] mb-1 text-slate-400">
-              <span>Ratio Used:</span> 
-              <span className="text-blue-400 font-bold">x {activeRatio.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between font-mono text-[11px] pt-1 border-t border-slate-700 text-emerald-400 font-bold">
-              <span>Stick Equiv:</span> 
-              <span>{Math.round(s.sticks).toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      );
-    })}
-  </div>
-</td>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(e.materials).map(([m, s]) => (
+                                <div key={m} className="group/pop relative bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 cursor-help shadow-sm">
+                                    {Icons[m]} <span className="font-mono text-black font-bold text-[11px]">{Math.round(s.rawQty).toLocaleString()}</span>
+                                    <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-3 z-[60] bg-slate-950 text-white p-4 rounded-xl shadow-2xl min-w-[220px] border border-slate-800 transition-all">
+                                        <p className="text-blue-400 font-black text-[10px] uppercase mb-2 flex items-center gap-2 border-b border-slate-700 pb-1"><Calculator size={12}/> Conversion Log</p>
+                                        <div className="flex justify-between font-mono text-[10px] mb-1"><span>Raw Input:</span> <span>{Math.round(s.rawQty).toLocaleString()} {s.unit}</span></div>
+                                        <div className="flex justify-between font-mono text-[10px] mb-1 text-slate-400"><span>Ratio Used:</span> <span>x {s.ratioUsed}</span></div>
+                                        <div className="flex justify-between font-mono text-[11px] pt-1 border-t border-slate-700 text-emerald-400 font-bold"><span>Stick Equiv:</span> <span>{Math.round(s.sticks).toLocaleString()}</span></div>
+                                    </div>
+                                </div>
+                            ))}
+                          </div>
+                        </td>
                         <td className="p-8 text-right font-mono font-bold text-slate-500">{Math.round(e.minPot).toLocaleString()}</td>
                         <td className="p-8 text-right font-mono font-black text-lg">{Math.round(e.actual).toLocaleString()}</td>
                         <td className="p-8 text-center">
@@ -483,22 +438,20 @@ const auditResult = useMemo(() => {
   <h3 className="text-xs font-black text-blue-700 uppercase tracking-widest mb-6 flex items-center gap-2">
     <Sliders size={18}/> Live Yield Overrides
   </h3>
-  <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
-    {['TOBACCO', 'TOW', 'PAPER', 'RODS', 'CIGARETTES_EXPORT'].map((key) => (
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+    {['TOBACCO', 'TOW', 'PAPER', 'RODS'].map((key) => (
       <div key={key} className="space-y-2">
-        <label className="text-[10px] font-black text-slate-400 uppercase">
-          {key === 'CIGARETTES_EXPORT' ? 'CIG (KG) Ratio' : `${key} Ratio`}
-        </label>
+        <label className="text-[10px] font-black text-slate-400 uppercase">{key} Multiplier</label>
         <input 
           type="number" 
           className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:border-blue-600 outline-none"
           value={localConversions[key]}
-          onChange={(e) => setLocalConversions({...localConversions, [key]: parseFloat(e.target.value) || 0})}
+          onChange={(e) => setLocalConversions({...localConversions, [key]: parseFloat(e.target.value)})}
         />
       </div>
     ))}
   </div>
-  <p className="mt-4 text-[10px] text-slate-400 italic">*Note: "CIG (KG) Ratio" defines how many sticks are estimated per 1kg of finished product weight.</p>
+  <p className="mt-4 text-[10px] text-slate-400 italic">*Note: Changing these values will immediately recalculate all "Target Analytics" and "Shadow Market" percentages.</p>
 </div>
               {/* Definitions Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -507,10 +460,7 @@ const auditResult = useMemo(() => {
                   <div className="bg-white border-2 border-slate-200 p-6 rounded-3xl space-y-4 shadow-sm">
                     <div>
                       <p className="font-black text-black text-sm uppercase">Tobacco Ceiling</p>
-                      <p className="text-xs text-slate-500 leading-relaxed font-bold">
-  The theoretical maximum number of cigarettes producible from available leaf. 
-  Formula: Leaf (kg) × {localConversions.TOBACCO.toLocaleString()}.
-</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">The theoretical maximum number of cigarettes producible from available leaf. Formula: Leaf (kg) × {CONVERSIONS.TOBACCO}.</p>
                     </div>
                     <div>
                       <p className="font-black text-black text-sm uppercase">Bottleneck</p>
@@ -550,38 +500,21 @@ const auditResult = useMemo(() => {
                     <thead className="text-slate-500 uppercase border-b border-slate-800">
                       <tr><th className="pb-4 text-left">Material</th><th className="pb-4 text-left">Multiplier</th><th className="pb-4 text-left">Logic</th></tr>
                     </thead>
-<tbody className="divide-y divide-slate-100">
-  <tr>
-    <td className="py-4 font-black">Tobacco Leaf</td>
-    <td className="py-4 text-blue-700 font-mono">x{localConversions.TOBACCO.toLocaleString()}</td>
-    <td className="text-slate-500 text-sm">{localConversions.TOBACCO.toLocaleString()} sticks per 1kg of leaf.</td>
+<tbody className="divide-y divide-slate-800">
+  <tr><td className="py-4 font-black">Tobacco Leaf</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOBACCO}</td><td>{CONVERSIONS.TOBACCO} sticks per 1kg of leaf.</td></tr>
+  <tr><td className="py-4 font-black">Acetate Tow</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOW}</td><td>{CONVERSIONS.TOW} sticks per 1kg of tow.</td></tr>
+  <tr><td className="py-4 font-black">Cig. Paper</td><td className="py-4 text-emerald-400">x{CONVERSIONS.PAPER}</td><td>20k sticks per 1kg of paper rolls.</td></tr>
+  <tr><td className="py-4 font-black">Filter Rods</td><td className="py-4 text-emerald-400">x{CONVERSIONS.RODS}</td><td>Standard 1:6 rod-to-stick ratio.</td></tr>
+  {/* NEW CIGARETTE CONSTANTS */}
+  <tr className="bg-emerald-900/10">
+    <td className="py-4 font-black text-emerald-400">Cigarettes (MIL)</td>
+    <td className="py-4 text-emerald-400">x1,000,000</td>
+    <td>Standard "Mille" unit (1,000 sticks per unit, 1,000 units per MIL).</td>
   </tr>
-  <tr>
-    <td className="py-4 font-black">Acetate Tow</td>
-    <td className="py-4 text-blue-700 font-mono">x{localConversions.TOW.toLocaleString()}</td>
-    <td className="text-slate-500 text-sm">{localConversions.TOW.toLocaleString()} sticks per 1kg of tow.</td>
-  </tr>
-  <tr>
-    <td className="py-4 font-black">Cig. Paper</td>
-    <td className="py-4 text-blue-700 font-mono">x{localConversions.PAPER.toLocaleString()}</td>
-    <td className="text-slate-500 text-sm">{localConversions.PAPER.toLocaleString()} sticks per 1kg of paper rolls.</td>
-  </tr>
-  <tr>
-    <td className="py-4 font-black">Filter Rods</td>
-    <td className="py-4 text-blue-700 font-mono">x{localConversions.RODS.toLocaleString()}</td>
-    <td className="text-slate-500 text-sm">Standard 1:{localConversions.RODS} rod-to-stick ratio.</td>
-  </tr>
-  
-  {/* NEW DYNAMIC CIGARETTE CONSTANTS */}
-  <tr className="bg-blue-50/50">
-    <td className="py-4 font-black text-blue-700">Cigarettes (MIL)</td>
-    <td className="py-4 text-blue-700 font-mono">x{localConversions.CIGARETTES_MIL.toLocaleString()}</td>
-    <td className="text-slate-500 text-sm italic">Standard "Mille" unit override (Adjustable for regional variations).</td>
-  </tr>
-  <tr className="bg-blue-50/50">
-    <td className="py-4 font-black text-blue-700">Cigarettes (KG)</td>
-    <td className="py-4 text-blue-700 font-mono">x{localConversions.CIGARETTES_EXPORT.toLocaleString()}</td>
-    <td className="text-slate-500 text-sm italic">Weight-to-Stick conversion (Approx. {1000 / localConversions.CIGARETTES_EXPORT}g per stick).</td>
+  <tr className="bg-emerald-900/10">
+    <td className="py-4 font-black text-emerald-400">Cigarettes (KG)</td>
+    <td className="py-4 text-emerald-400">x{CONVERSIONS.CIGARETTES_EXPORT}</td>
+    <td>Weight-to-Stick conversion (Approx. 1g per stick including packaging).</td>
   </tr>
 </tbody>
                   </table>
@@ -613,38 +546,22 @@ const auditResult = useMemo(() => {
             </div>
           )}
         </div>
-     )}
+      )}
     </div>
   );
 }
 
 function SummaryBox({ title, val, sub, color, isText }) {
-    // Ensure val isn't null/undefined to prevent .toLocaleString() errors
-    const displayValue = isText 
-        ? (val || "---") 
-        : Math.round(Number(val) || 0).toLocaleString();
-
     return (
-        <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm hover:border-blue-100 transition-all group">
-            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest group-hover:text-blue-600 transition-colors">
-                {title}
-            </p>
-            <p className={`text-3xl font-black ${color} truncate`} title={isText ? val : undefined}>
-                {displayValue}
-            </p>
-            <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tighter">
-                {sub}
-            </p>
+        <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm hover:border-blue-100 transition-all">
+            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">{title}</p>
+            <p className={`text-3xl font-black ${color}`}>{isText ? val : Math.round(val).toLocaleString()}</p>
+            <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tighter">{sub}</p>
         </div>
     );
 }
 
 function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
-  // Use 0 as fallback to prevent .toLocaleString() errors on undefined values
-  const safeKg = kg || 0;
-  const safeSticks = sticks || 0;
-  const safeRatio = ratio || 0;
-
   return (
     <div className="group relative">
       <div className="flex justify-between items-end cursor-help border-b border-slate-100 pb-3 hover:border-blue-200 transition-colors">
@@ -652,42 +569,17 @@ function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
           <div className={`w-2 h-10 rounded-full ${color}`}/>
           <div>
             <p className="text-[10px] font-black uppercase text-slate-400 tracking-tighter">{label}</p>
-            <p className="text-xl font-black text-black">
-              {Math.round(safeKg).toLocaleString()} 
-              <span className="text-[10px] font-bold text-slate-300 uppercase ml-1">{unit}</span>
-            </p>
-            {/* Added this visual indicator so the factor is visible even without hover */}
-            <p className="text-[9px] font-black text-blue-600/60 uppercase tracking-tighter">
-              × {safeRatio.toLocaleString()} Yield
-            </p>
+            <p className="text-xl font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-[10px] font-bold text-slate-300 uppercase">{unit}</span></p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-base font-black text-blue-700 font-mono tracking-tighter">
-            {Math.round(safeSticks).toLocaleString()}
-          </p>
-          <p className="text-[8px] font-bold text-slate-400 uppercase">Sticks Eq</p>
-        </div>
+        <div className="text-right"><p className="text-base font-black text-blue-700 font-mono tracking-tighter">{Math.round(sticks).toLocaleString()}</p><p className="text-[8px] font-bold text-slate-400 uppercase">Sticks Eq</p></div>
       </div>
-
-      {/* Forensic Tooltip on Hover */}
-      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute left-0 bottom-full mb-3 z-[60] bg-slate-900 text-white p-5 rounded-2xl text-[10px] font-mono min-w-[240px] shadow-2xl transition-all border border-slate-700 pointer-events-none scale-95 group-hover:scale-100 origin-bottom-left">
-         <div className="flex items-center gap-2 text-blue-400 font-black uppercase mb-3 border-b border-slate-800 pb-2">
-           <Calculator size={14}/> Forensic Conversion
-         </div>
+      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute right-0 bottom-full mb-3 z-[60] bg-slate-900 text-white p-5 rounded-xl text-[10px] font-mono min-w-[240px] shadow-2xl transition-all border border-slate-700 pointer-events-none">
+         <div className="flex items-center gap-2 text-blue-400 font-black uppercase mb-3 border-b border-slate-700 pb-2"><Calculator size={14}/> Forensic Conversion</div>
          <div className="space-y-2">
-            <div className="flex justify-between text-slate-400">
-              <span>Input Physical:</span> 
-              <span className="text-white font-bold">{Math.round(safeKg).toLocaleString()} {unit}</span>
-            </div>
-            <div className="flex justify-between text-slate-400">
-              <span>Material Factor:</span> 
-              <span className="text-blue-400 font-bold">× {safeRatio.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between pt-2 border-t border-slate-800 text-emerald-400 font-black text-[11px]">
-              <span>Stick Potential:</span> 
-              <span>{Math.round(safeSticks).toLocaleString()}</span>
-            </div>
+            <div className="flex justify-between"><span>Physical:</span> <span>{Math.round(kg).toLocaleString()} {unit}</span></div>
+            <div className="flex justify-between"><span>Material Factor:</span> <span>x {ratio}</span></div>
+            <div className="flex justify-between pt-2 border-t border-slate-700 text-emerald-400 font-black text-[11px]"><span>Potential:</span> <span>{Math.round(sticks).toLocaleString()}</span></div>
          </div>
       </div>
     </div>
