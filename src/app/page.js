@@ -19,7 +19,19 @@ const CONVERSIONS = {
   'RODS': 6,
   'CIGARETTES_EXPORT': 1000, 
   'TAX_PER_STICK': 0.15,
-  'UNITS': { 'MIL': 1000, 'KGM': 1, 'KG': 1, 'TON': 1000, 'MT': 1000, 'CASE': 10000, 'PIECE': 1 }
+ 'UNITS': { 
+  'MIL': 1000, 
+  'KGM': 1, 
+  'KG': 1, 
+  'TON': 1000, 
+  'MT': 1000, 
+  'CASE': 10000, 
+  'PIECE': 1,
+  'BOX': 200,      // Standard outer box (10 packs)
+  'PACK': 20,      // Standard pack of 20
+  'BAG': 20,       // Often used for loose/RYO equivalent
+  'STICK': 1 
+}
 };
 
 const Icons = {
@@ -42,6 +54,7 @@ export default function ObsidianPrimeV12Final() {
   const [reportTitle, setReportTitle] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [riskThreshold, setRiskThreshold] = useState(10);
+  const [localConversions, setLocalConversions] = useState(CONVERSIONS);
 
   useEffect(() => {
     try {
@@ -121,7 +134,12 @@ export default function ObsidianPrimeV12Final() {
     return { 
       entities, nat, productionGap: natGap, leakageData,
       shadowProb: nat.actual > 0 ? Math.min(100, (natGap / nat.actual) * 100) : 0,
-      bottleneck: [{name: 'Tobacco', val: nat.tobacco}, {name: 'Tow', val: nat.tow}, {name: 'Paper', val: nat.paper}, {name: 'Rods', val: nat.rods}].filter(p => p.val > 0).reduce((p, c) => p.val < c.val ? p : c, {name: 'None', val: 0}),
+     bottleneck: [
+  { name: 'Tobacco', val: nat.tobacco },
+  { name: 'Tow', val: nat.tow },
+  { name: 'Paper', val: nat.paper },
+  { name: 'Rods', val: nat.rods }
+].filter(p => p.val > 0).reduce((prev, curr) => (prev.val < curr.val ? prev : curr), { name: 'No Precursors Found', val: 0 }),
       taxLoss: natGap * CONVERSIONS.TAX_PER_STICK 
     };
   }, [rawData, riskThreshold]);
@@ -300,10 +318,10 @@ export default function ObsidianPrimeV12Final() {
 <div className="bg-white border-2 border-slate-100 p-10 rounded-[2.5rem] shadow-sm">
   <h2 className="text-xs font-black text-blue-700 uppercase tracking-widest border-b-2 border-slate-50 pb-5 mb-8">Precursor Conversion Ledger</h2>
   <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
-    <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
-    <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
-    <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
-    <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
+    <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={localConversions.TOBACCO} />
+    <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={localConversions.TOW} />
+    <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={localConversions.PAPER} />
+    <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={localConversions.RODS} />
     <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / 1000} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={1000} />
   </div>
 </div>
@@ -416,7 +434,25 @@ export default function ObsidianPrimeV12Final() {
                 <h2 className="text-3xl font-black uppercase mb-4 flex items-center gap-3"><HelpCircle size={32}/> Forensic Field Manual</h2>
                 <p className="text-blue-100 font-medium">This guide defines the logic, yield constants, and risk indicators used in the Obsidian Prime V12.0 engine to identify shadow market activities.</p>
               </div>
-
+<div className="bg-white border-2 border-slate-200 p-8 rounded-[2.5rem] mb-12 shadow-sm">
+  <h3 className="text-xs font-black text-blue-700 uppercase tracking-widest mb-6 flex items-center gap-2">
+    <Sliders size={18}/> Live Yield Overrides
+  </h3>
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+    {['TOBACCO', 'TOW', 'PAPER', 'RODS'].map((key) => (
+      <div key={key} className="space-y-2">
+        <label className="text-[10px] font-black text-slate-400 uppercase">{key} Multiplier</label>
+        <input 
+          type="number" 
+          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:border-blue-600 outline-none"
+          value={localConversions[key]}
+          onChange={(e) => setLocalConversions({...localConversions, [key]: parseFloat(e.target.value)})}
+        />
+      </div>
+    ))}
+  </div>
+  <p className="mt-4 text-[10px] text-slate-400 italic">*Note: Changing these values will immediately recalculate all "Target Analytics" and "Shadow Market" percentages.</p>
+</div>
               {/* Definitions Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <section className="space-y-4">
