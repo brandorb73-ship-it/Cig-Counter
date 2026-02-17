@@ -160,8 +160,7 @@ const auditResult = useMemo(() => {
       taxLoss: natGap * localConversions.TAX_PER_STICK 
     };
   }, [rawData, riskThreshold, localConversions]); 
-    }).sort((a, b) => b.actual - a.actual);
-
+    
     const natGap = Math.max(0, nat.actual - nat.tobacco);
     const leakageData = [
       { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
