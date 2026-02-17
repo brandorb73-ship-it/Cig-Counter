@@ -197,7 +197,8 @@ export default function ObsidianPrimeV12Final() {
               <button onClick={() => setActiveTab('country')} className={`pb-4 transition-all ${activeTab === 'country' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>National Intel</button>
               <button onClick={() => setActiveTab('entities')} className={`pb-4 transition-all ${activeTab === 'entities' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Target Analytics</button>
               <button onClick={() => setActiveTab('reports')} className={`pb-4 transition-all ${activeTab === 'reports' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Archives</button>
-            </div>
+            <button onClick={() => setActiveTab('guide')} className={`pb-4 transition-all ${activeTab === 'guide' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Audit Guide</button>
+        </div>
             <div className="flex gap-3 pb-4">
               <input className="bg-white border-2 border-slate-200 rounded-xl px-4 py-1.5 text-xs font-black outline-none" placeholder="Snapshot Name..." value={reportTitle} onChange={e => setReportTitle(e.target.value)} />
               <button onClick={saveReport} className="bg-emerald-700 text-white px-6 py-2 rounded-xl text-[11px] font-black uppercase flex items-center gap-2"><Save size={16}/> Save</button>
@@ -406,6 +407,81 @@ export default function ObsidianPrimeV12Final() {
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+            </div>
+         ) : activeTab === 'guide' ? (
+            <div className="max-w-5xl mx-auto space-y-12 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Header Section */}
+              <div className="bg-blue-700 p-10 rounded-[2.5rem] text-white shadow-2xl">
+                <h2 className="text-3xl font-black uppercase mb-4 flex items-center gap-3"><HelpCircle size={32}/> Forensic Field Manual</h2>
+                <p className="text-blue-100 font-medium">This guide defines the logic, yield constants, and risk indicators used in the Obsidian Prime V12.0 engine to identify shadow market activities.</p>
+              </div>
+
+              {/* Definitions Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <section className="space-y-4">
+                  <h3 className="text-blue-700 font-black uppercase text-xs tracking-widest flex items-center gap-2"><Target size={18}/> Primary Metrics</h3>
+                  <div className="bg-white border-2 border-slate-200 p-6 rounded-3xl space-y-4 shadow-sm">
+                    <div>
+                      <p className="font-black text-black text-sm uppercase">Tobacco Ceiling</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">The theoretical maximum number of cigarettes producible from available leaf. Formula: Leaf (kg) × {CONVERSIONS.TOBACCO}.</p>
+                    </div>
+                    <div>
+                      <p className="font-black text-black text-sm uppercase">Bottleneck</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">The single precursor with the lowest stick-equivalent volume. This represents the absolute legal limit of production.</p>
+                    </div>
+                    <div>
+                      <p className="font-black text-black text-sm uppercase">Production Gap</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">The difference between recorded exports and the Precursor Ceiling. Any positive gap suggests shadow-sourced materials.</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-red-600 font-black uppercase text-xs tracking-widest flex items-center gap-2"><Gavel size={18}/> Risk & Scoring</h3>
+                  <div className="bg-white border-2 border-slate-200 p-6 rounded-3xl space-y-4 shadow-sm">
+                    <div>
+                      <p className="font-black text-black text-sm uppercase">Reliability Score</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">Measures supply chain consistency. Calculated by the variance between material potentials. A score &lt; 70% indicates "Fragmented Sourcing."</p>
+                    </div>
+                    <div>
+                      <p className="font-black text-black text-sm uppercase">Tax Leakage</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">Estimated fiscal loss based on the Production Gap. Formula: Gap × ${CONVERSIONS.TAX_PER_STICK} (Excise Rate).</p>
+                    </div>
+                    <div>
+                      <p className="font-black text-black text-sm uppercase">Shadow Market Index</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">Percentage of exports unsupported by precursors. 100% Shadow indicates "Ghost Production" (Exports with zero leaf records).</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              {/* Master Yield Table */}
+              <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-xl">
+                <h3 className="text-blue-400 font-black uppercase text-xs tracking-widest mb-6 flex items-center gap-2"><Calculator size={18}/> Yield Constants (Master Table)</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px] font-mono">
+                    <thead className="text-slate-500 uppercase border-b border-slate-800">
+                      <tr><th className="pb-4 text-left">Material</th><th className="pb-4 text-left">Multiplier</th><th className="pb-4 text-left">Logic</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      <tr><td className="py-4 font-black">Tobacco Leaf</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOBACCO}</td><td>{CONVERSIONS.TOBACCO} sticks per 1kg of leaf.</td></tr>
+                      <tr><td className="py-4 font-black">Acetate Tow</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOW}</td><td>{CONVERSIONS.TOW} sticks per 1kg of tow.</td></tr>
+                      <tr><td className="py-4 font-black">Cig. Paper</td><td className="py-4 text-emerald-400">x{CONVERSIONS.PAPER}</td><td>20k sticks per 1kg of paper rolls.</td></tr>
+                      <tr><td className="py-4 font-black">Filter Rods</td><td className="py-4 text-emerald-400">x{CONVERSIONS.RODS}</td><td>Standard 1:6 rod-to-stick ratio.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* User Guide Footer */}
+              <div className="bg-emerald-50 border-2 border-emerald-200 p-10 rounded-[2.5rem]">
+                <h3 className="text-emerald-900 font-black uppercase text-sm mb-6">Standard Operating Procedure (SOP)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-[11px] font-bold text-emerald-800">
+                  <div className="space-y-2"><div className="bg-emerald-200 w-8 h-8 rounded-full flex items-center justify-center">1</div><p className="uppercase">Import Data</p><p className="font-medium text-emerald-700/80">Sync URL. The engine auto-cleans Quantity strings and normalizes Units (MT, TON, KGM, MIL).</p></div>
+                  <div className="space-y-2"><div className="bg-emerald-200 w-8 h-8 rounded-full flex items-center justify-center">2</div><p className="uppercase">Set Threshold</p><p className="font-medium text-emerald-700/80">Adjust Risk Slider. A 10% threshold allows for standard industrial wastage before flagging.</p></div>
+                  <div className="space-y-2"><div className="bg-emerald-200 w-8 h-8 rounded-full flex items-center justify-center">3</div><p className="uppercase">Investigate</p><p className="font-medium text-emerald-700/80">Targets with "CRITICAL" verdicts and &lt;50% Reliability are priority-one for forensic inspection.</p></div>
+                </div>
               </div>
             </div>
           ) : (
