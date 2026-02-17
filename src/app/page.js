@@ -293,7 +293,12 @@ export default function ForensicUnifiedV13() {
                    <div className="bg-red-600 text-white h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 font-black text-xl shadow-lg">03</div>
                    <div>
                      <h3 className="font-black text-lg uppercase mb-2 text-red-600">Shadow Sourcing Detection</h3>
-                     <p className="text-slate-600 font-bold leading-relaxed italic">"Shadow Signal" is triggered if Actual Exports > Ceiling * (1 + Risk Sensitivity). Zero-Tobacco sourcing is flagged as a Critical violation regardless of volume.</p>
+                   <div>
+  <h3 className="font-black text-lg uppercase mb-2 text-red-600">Shadow Sourcing Detection</h3>
+  <p className="text-slate-600 font-bold leading-relaxed italic">
+    "Shadow Signal" is triggered if Actual Exports {" > "} Ceiling * (1 + Risk Sensitivity). Zero-Tobacco sourcing is flagged as a Critical violation regardless of volume.
+  </p>
+</div>
                    </div>
                 </div>
               </div>
