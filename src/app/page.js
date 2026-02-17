@@ -286,19 +286,7 @@ export default function ForensicGradeV12() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* LEFT PANEL: NATIONAL FORENSIC ANALYSIS */}
-            <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-xl">
-                <h2 className="text-sm font-black text-blue-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                    <Gavel size={20}/> National Forensic Analysis
-                </h2>
-                <div className="space-y-6 text-sm leading-relaxed text-blue-50 font-medium">
-                    <p>
-                        Total recorded exports stand at <span className="text-emerald-400 font-black">{Math.round(auditResult.nat.actual).toLocaleString()}</span> sticks. 
-                        Based on raw material precursors, the maximum sustainable production is limited by <span className="text-blue-400 font-black underline uppercase">{auditResult.bottleneck.name}</span>.
-                    </p>
-                    <p className="bg-red-950/30 p-4 border-l-4 border-red-500 rounded-r-xl">
-                        The production gap of <span className="text-red-400 font-black">{auditResult.productionGap.toLocaleString()}</span> sticks represents a potential fiscal leakage of <span className="text-red-400 font-black">${Math.round(auditResult.taxLoss).toLocaleString()}</span> in unpaid excise duties.
-                    </p>
-                    <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+          <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
                         <p className="text-xs font-bold text-slate-400 uppercase mb-2">Verdict Summary</p>
                         {auditResult.nat.actual > auditResult.nat.tobacco ? (
                             <p className="text-red-400 font-bold italic flex gap-2">
@@ -309,9 +297,9 @@ export default function ForensicGradeV12() {
                                 <CheckCircle size={18}/> Reconciled: National production volumes are within the legal precursor envelope.
                             </p>
                         )}
-                    </div>
-                </div>
-            </div>
+                    </div> {/* This closes the Verdict Summary Box */}
+                </div> {/* This closes the spacing container for the Forensic Analysis text */}
+            </div> {/* This closes the Dark Blue Forensic Panel */}
 
             {/* RIGHT PANEL: COMPLIANCE RATIOS */}
             <div className="bg-white border-2 border-slate-200 p-10 rounded-[2.5rem] shadow-sm flex flex-col justify-center">
