@@ -282,12 +282,74 @@ export default function ForensicGradeV12() {
                 </div>
             <p className="text-emerald-400 font-bold italic flex gap-2"><CheckCircle size={18}/> Reconciled: National production volumes are within the legal precursor envelope.</p>
               )}
+          {/* START OF FORENSIC & COMPLIANCE GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            {/* LEFT PANEL: NATIONAL FORENSIC ANALYSIS */}
+            <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-xl">
+                <h2 className="text-sm font-black text-blue-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                    <Gavel size={20}/> National Forensic Analysis
+                </h2>
+                <div className="space-y-6 text-sm leading-relaxed text-blue-50 font-medium">
+                    <p>
+                        Total recorded exports stand at <span className="text-emerald-400 font-black">{Math.round(auditResult.nat.actual).toLocaleString()}</span> sticks. 
+                        Based on raw material precursors, the maximum sustainable production is limited by <span className="text-blue-400 font-black underline uppercase">{auditResult.bottleneck.name}</span>.
+                    </p>
+                    <p className="bg-red-950/30 p-4 border-l-4 border-red-500 rounded-r-xl">
+                        The production gap of <span className="text-red-400 font-black">{auditResult.productionGap.toLocaleString()}</span> sticks represents a potential fiscal leakage of <span className="text-red-400 font-black">${Math.round(auditResult.taxLoss).toLocaleString()}</span> in unpaid excise duties.
+                    </p>
+                    <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Verdict Summary</p>
+                        {auditResult.nat.actual > auditResult.nat.tobacco ? (
+                            <p className="text-red-400 font-bold italic flex gap-2">
+                                <AlertTriangle size={18}/> High Risk: Production exceeds tobacco leaf availability by {Math.round((auditResult.nat.actual/auditResult.nat.tobacco - 1)*100)}%.
+                            </p>
+                        ) : (
+                            <p className="text-emerald-400 font-bold italic flex gap-2">
+                                <CheckCircle size={18}/> Reconciled: National production volumes are within the legal precursor envelope.
+                            </p>
+                        )}
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
 
-        {/* COMPLIANCE RATIOS PANEL */}
-        <div className="bg-white border-2 border-slate-200 p-10 rounded-[2.5rem] shadow-sm flex flex-col justify-center">
+            {/* RIGHT PANEL: COMPLIANCE RATIOS */}
+            <div className="bg-white border-2 border-slate-200 p-10 rounded-[2.5rem] shadow-sm flex flex-col justify-center">
+                <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
+                    <Target size={18} className="text-blue-700"/> Compliance Metrics
+                </h2>
+                <div className="grid grid-cols-2 gap-8">
+                    <div className="border-l-2 border-slate-100 pl-6">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Precursor Utilization</p>
+                        <p className="text-2xl font-black text-black">
+                            {auditResult.nat.actual > 0 
+                                ? Math.min(100, (auditResult.nat.tobacco / auditResult.nat.actual) * 100).toFixed(1) 
+                                : 0}%
+                        </p>
+                        <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">Leaf-to-Export Ratio</p>
+                    </div>
+                    <div className="border-l-2 border-slate-100 pl-6">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Audit Integrity</p>
+                        <p className="text-2xl font-black text-blue-700">
+                            {auditResult.entities.filter(e => e.reliability > 80).length} / {auditResult.entities.length}
+                        </p>
+                        <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">High-Confidence Entities</p>
+                    </div>
+                </div>
+                <div className="mt-10 pt-8 border-t border-slate-100">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-[10px] font-black uppercase text-slate-400">Bottleneck Severity</span>
+                        <span className="text-[10px] font-black text-red-600 uppercase">Critical Impact</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div 
+                            className="bg-red-500 h-full rounded-full" 
+                            style={{ width: `${Math.min(100, (auditResult.productionGap / (auditResult.nat.actual || 1)) * 100)}%` }}
+                        />
+                    </div>
+                </div>
+            </div>
+        </div> {/* END OF FORENSIC & COMPLIANCE GRID */}
           <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
             <Target size={18} className="text-blue-700"/> Compliance Metrics
           </h2>
