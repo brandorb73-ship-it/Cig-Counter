@@ -134,10 +134,28 @@ const auditResult = useMemo(() => {
       entities, 
       nat, 
       productionGap: currentNatGap, 
-      leakageData: [
-        { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
-        { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' }
-      ].filter(d => d.value > 0),
+leakageData: [
+        { 
+          name: 'Tobacco Deficit', 
+          value: Math.max(0, (nat?.actual || 0) - (nat?.tobacco || 0)), 
+          fill: '#f59e0b' 
+        },
+        { 
+          name: 'Tow Deficit', 
+          value: Math.max(0, (nat?.actual || 0) - (nat?.tow || 0)), 
+          fill: '#0ea5e9' 
+        },
+        { 
+          name: 'Paper Deficit', 
+          value: Math.max(0, (nat?.actual || 0) - (nat?.paper || 0)), 
+          fill: '#64748b' 
+        },
+        { 
+          name: 'Rod Deficit', 
+          value: Math.max(0, (nat?.actual || 0) - (nat?.rods || 0)), 
+          fill: '#a855f7' 
+        }
+      ].filter(d => d.value > 0), // This hides materials that are NOT in deficit
       shadowProb: nat.actual > 0 ? Math.min(100, (currentNatGap / nat.actual) * 100) : 0,
       bottleneck: currentBottleneck,
       taxLoss: currentNatGap * localConversions.TAX_PER_STICK 
