@@ -72,13 +72,19 @@ const auditResult = useMemo(() => {
     if (!rawData || rawData.length === 0) return null;
     
     const registry = {};
-    let nat = { tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 };
+    // Initialize nat with trackers for both Sticks and raw Physical volume
+    let nat = { 
+      tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, 
+      tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 
+    };
 
     // 1. Process Raw Data Loop
     rawData.forEach(row => {
       const entity = row.Entity || row.Importer || row.Exporter;
       if (!entity) return;
-      if (!registry[entity]) registry[entity] = { name: entity, tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, materials: {}, tx: 0 };
+      if (!registry[entity]) {
+        registry[entity] = { name: entity, tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, materials: {}, tx: 0 };
+      }
       
       const mR = (row.Material || '').toUpperCase();
       const mat = mR.includes('TOBACCO') ? 'TOBACCO' : mR.includes('TOW') ? 'TOW' : 
@@ -95,19 +101,34 @@ const auditResult = useMemo(() => {
         let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * localConversions.CIGARETTES_EXPORT : convQty;
         registry[entity].actual += sticks;
         nat.actual += sticks;
+        
+        // This fixes the Target Tab crash by ensuring the material object exists
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
+        registry[entity].materials[mat].rawQty += qty;
+        registry[entity].materials[mat].sticks += sticks;
+
       } else if (mat && localConversions[mat]) {
         const sticks = convQty * localConversions[mat];
-        registry[entity][mat.toLowerCase()] += sticks;
-        if (mat === 'TOBACCO') { nat.tobacco += sticks; }
-        if (mat === 'TOW') { nat.tow += sticks; }
-        if (mat === 'PAPER') { nat.paper += sticks; }
-        if (mat === 'RODS') { nat.rods += sticks; }
+        const key = mat.toLowerCase();
+        registry[entity][key] += sticks;
+        
+        // This fixes the National Ledger by storing the raw weights
+        if (mat === 'TOBACCO') { nat.tobaccoKg += convQty; nat.tobacco += sticks; }
+        if (mat === 'TOW') { nat.towKg += convQty; nat.tow += sticks; }
+        if (mat === 'PAPER') { nat.paperKg += convQty; nat.paper += sticks; }
+        if (mat === 'RODS') { nat.rodsUnits += convQty; nat.rods += sticks; }
+
+        // Populate materials for Target Analytics tab
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
+        registry[entity].materials[mat].rawQty += qty;
+        registry[entity].materials[mat].sticks += sticks;
       }
     });
 
-    // 2. National Logic (Calculated ONCE)
+    // 2. National Logic
     const currentNatGap = Math.max(0, nat.actual - nat.tobacco);
     
+    // Bottleneck logic: finds the material with the lowest stick potential
     const currentBottleneck = [
       { name: 'Tobacco', val: nat.tobacco },
       { name: 'Tow', val: nat.tow },
@@ -123,45 +144,32 @@ const auditResult = useMemo(() => {
       const isCritical = (e.actual > 0 && e.tobacco === 0) || (e.actual > (minPot * (1 + riskThreshold/100)));
       
       return { 
-        ...e, minPot, productionGap,
+        ...e, 
+        minPot, 
+        productionGap,
+        taxRisk: productionGap * localConversions.TAX_PER_STICK,
         reliability: pots.length > 0 ? Math.max(0, 100 - (((Math.max(...pots) - minPot) / Math.max(...pots)) * 100)) : 0,
         risk: isCritical ? 'CRITICAL' : 'RECONCILED'
       };
     }).sort((a, b) => b.actual - a.actual);
 
-    // 4. Return Everything
+    // 4. Final Data Return
     return { 
       entities, 
       nat, 
       productionGap: currentNatGap, 
-leakageData: [
-        { 
-          name: 'Tobacco Deficit', 
-          value: Math.max(0, (nat?.actual || 0) - (nat?.tobacco || 0)), 
-          fill: '#f59e0b' 
-        },
-        { 
-          name: 'Tow Deficit', 
-          value: Math.max(0, (nat?.actual || 0) - (nat?.tow || 0)), 
-          fill: '#0ea5e9' 
-        },
-        { 
-          name: 'Paper Deficit', 
-          value: Math.max(0, (nat?.actual || 0) - (nat?.paper || 0)), 
-          fill: '#64748b' 
-        },
-        { 
-          name: 'Rod Deficit', 
-          value: Math.max(0, (nat?.actual || 0) - (nat?.rods || 0)), 
-          fill: '#a855f7' 
-        }
-      ].filter(d => d.value > 0), // This hides materials that are NOT in deficit
+      leakageData: [
+        { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
+        { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' },
+        { name: 'Paper Deficit', value: Math.max(0, nat.actual - nat.paper), fill: '#64748b' },
+        { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
+      ].filter(d => d.value > 0),
       shadowProb: nat.actual > 0 ? Math.min(100, (currentNatGap / nat.actual) * 100) : 0,
       bottleneck: currentBottleneck,
       taxLoss: currentNatGap * localConversions.TAX_PER_STICK 
     };
   }, [rawData, riskThreshold, localConversions]);
-
+  
   const filteredEntities = useMemo(() => {
     return (auditResult?.entities || []).filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [auditResult, searchTerm]);
