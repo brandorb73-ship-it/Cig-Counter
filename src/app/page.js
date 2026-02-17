@@ -364,6 +364,28 @@ export default function ForensicGradeV12() {
                       </tr>
                     ))}
                   </tbody>
+                      {/* DYNAMIC TOTALS FOOTER */}
+<tfoot className="bg-slate-50 border-t-4 border-slate-900 sticky bottom-0 z-20">
+  <tr className="font-black text-black">
+    <td className="p-8 text-base uppercase">Total Filtered Targets: {filteredEntities.length}</td>
+    <td className="p-8 text-center font-mono text-lg text-slate-600">
+      {filteredEntities.reduce((sum, e) => sum + e.tx, 0)}
+    </td>
+    <td className="p-8 text-center text-[10px] text-slate-400">AGGR. RELIABILITY</td>
+    <td className="p-8"></td>
+    <td className="p-8 text-right font-mono text-slate-500">
+      {filteredEntities.reduce((sum, e) => sum + e.minPot, 0).toLocaleString()}
+    </td>
+    <td className="p-8 text-right font-mono text-xl text-blue-700">
+      {filteredEntities.reduce((sum, e) => sum + e.actual, 0).toLocaleString()}
+    </td>
+    <td className="p-8 text-center">
+      <div className="text-[10px] bg-slate-900 text-white py-2 px-4 rounded-lg inline-block">
+        AUDIT SUMMARY
+      </div>
+    </td>
+  </tr>
+</tfoot>
                 </table>
               </div>
             </div>
