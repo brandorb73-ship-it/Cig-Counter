@@ -12,27 +12,16 @@ import {
   ChevronRight, HelpCircle, Landmark, TrendingUp, Fingerprint, EyeOff 
 } from 'lucide-react';
 
-const CONVERSIONS = {
-  'TOBACCO': 1333.33, 
-  'TOW': 8333.33, 
-  'PAPER': 20000, 
-  'RODS': 6,
-  'CIGARETTES_EXPORT': 1000, 
-  'TAX_PER_STICK': 0.15,
- 'UNITS': { 
-  'MIL': 1000, 
-  'KGM': 1, 
-  'KG': 1, 
-  'TON': 1000, 
-  'MT': 1000, 
-  'CASE': 10000, 
-  'PIECE': 1,
-  'BOX': 200,      // Standard outer box (10 packs)
-  'PACK': 20,      // Standard pack of 20
-  'BAG': 20,       // Often used for loose/RYO equivalent
-  'STICK': 1 
-}
-};
+const [localConversions, setLocalConversions] = useState({
+  TOBACCO: 1333.33,
+  TOW: 8333.33,
+  PAPER: 20000,
+  RODS: 6,
+  CIGARETTES_EXPORT: 1000, // For KG
+  CIGARETTES_MIL: 1000000,   // Add this for MIL units
+  TAX_PER_STICK: 0.15,
+  UNITS: { 'KG': 1, 'KGM': 1, 'TON': 1000, 'MT': 1000, 'LB': 0.4535, 'MIL': 1 }
+});
 
 const Icons = {
   'TOBACCO': <Database className="text-amber-700" size={18} />,
@@ -97,10 +86,21 @@ const auditResult = useMemo(() => {
       const convQty = qty * factor;
       registry[entity].tx += 1;
 
-      if (mat === 'CIGARETTES') {
-        let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * localConversions.CIGARETTES_EXPORT : convQty;
+if (mat === 'CIGARETTES') {
+        // Use the live override localConversions.CIGARETTES_MIL instead of 1,000,000
+        let sticks = (unit === 'MIL') 
+          ? qty * localConversions.CIGARETTES_MIL 
+          : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) 
+            ? convQty * localConversions.CIGARETTES_EXPORT 
+            : convQty;
+            
         registry[entity].actual += sticks;
         nat.actual += sticks;
+        
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
+        registry[entity].materials[mat].rawQty += qty;
+        registry[entity].materials[mat].sticks += sticks;
+      }
         
         // This fixes the Target Tab crash by ensuring the material object exists
         if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
@@ -401,20 +401,45 @@ const auditResult = useMemo(() => {
                             </div>
                         </td>
                         <td className="p-8">
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(e.materials).map(([m, s]) => (
-                                <div key={m} className="group/pop relative bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 cursor-help shadow-sm">
-                                    {Icons[m]} <span className="font-mono text-black font-bold text-[11px]">{Math.round(s.rawQty).toLocaleString()}</span>
-                                    <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-3 z-[60] bg-slate-950 text-white p-4 rounded-xl shadow-2xl min-w-[220px] border border-slate-800 transition-all">
-                                        <p className="text-blue-400 font-black text-[10px] uppercase mb-2 flex items-center gap-2 border-b border-slate-700 pb-1"><Calculator size={12}/> Conversion Log</p>
-                                        <div className="flex justify-between font-mono text-[10px] mb-1"><span>Raw Input:</span> <span>{Math.round(s.rawQty).toLocaleString()} {s.unit}</span></div>
-                                        <div className="flex justify-between font-mono text-[10px] mb-1 text-slate-400"><span>Ratio Used:</span> <span>x {s.ratioUsed}</span></div>
-                                        <div className="flex justify-between font-mono text-[11px] pt-1 border-t border-slate-700 text-emerald-400 font-bold"><span>Stick Equiv:</span> <span>{Math.round(s.sticks).toLocaleString()}</span></div>
-                                    </div>
-                                </div>
-                            ))}
-                          </div>
-                        </td>
+  <div className="flex flex-wrap gap-2">
+    {Object.entries(e.materials).map(([m, s]) => {
+      // 1. Determine the correct ratio to display based on material type and unit
+      let ratioKey = m;
+      if (m === 'CIGARETTES') {
+        ratioKey = s.unit === 'MIL' ? 'CIGARETTES_MIL' : 'CIGARETTES_EXPORT';
+      }
+      const activeRatio = localConversions[ratioKey] || 0;
+
+      return (
+        <div key={m} className="group/pop relative bg-white border border-slate-200 rounded-xl px-3 py-1.5 flex items-center gap-2 cursor-help shadow-sm">
+          {Icons[m]} 
+          <span className="font-mono text-black font-bold text-[11px]">
+            {Math.round(s.rawQty).toLocaleString()}
+          </span>
+
+          {/* Conversion Log Tooltip */}
+          <div className="invisible group-hover/pop:visible opacity-0 group-hover/pop:opacity-100 absolute bottom-full left-0 mb-3 z-[60] bg-slate-950 text-white p-4 rounded-xl shadow-2xl min-w-[220px] border border-slate-800 transition-all">
+            <p className="text-blue-400 font-black text-[10px] uppercase mb-2 flex items-center gap-2 border-b border-slate-700 pb-1">
+              <Calculator size={12}/> Conversion Log
+            </p>
+            <div className="flex justify-between font-mono text-[10px] mb-1">
+              <span>Raw Input:</span> 
+              <span>{Math.round(s.rawQty).toLocaleString()} {s.unit}</span>
+            </div>
+            <div className="flex justify-between font-mono text-[10px] mb-1 text-slate-400">
+              <span>Ratio Used:</span> 
+              <span className="text-blue-400 font-bold">x {activeRatio.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between font-mono text-[11px] pt-1 border-t border-slate-700 text-emerald-400 font-bold">
+              <span>Stick Equiv:</span> 
+              <span>{Math.round(s.sticks).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</td>
                         <td className="p-8 text-right font-mono font-bold text-slate-500">{Math.round(e.minPot).toLocaleString()}</td>
                         <td className="p-8 text-right font-mono font-black text-lg">{Math.round(e.actual).toLocaleString()}</td>
                         <td className="p-8 text-center">
@@ -528,21 +553,38 @@ const auditResult = useMemo(() => {
                     <thead className="text-slate-500 uppercase border-b border-slate-800">
                       <tr><th className="pb-4 text-left">Material</th><th className="pb-4 text-left">Multiplier</th><th className="pb-4 text-left">Logic</th></tr>
                     </thead>
-<tbody className="divide-y divide-slate-800">
-  <tr><td className="py-4 font-black">Tobacco Leaf</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOBACCO}</td><td>{CONVERSIONS.TOBACCO} sticks per 1kg of leaf.</td></tr>
-  <tr><td className="py-4 font-black">Acetate Tow</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOW}</td><td>{CONVERSIONS.TOW} sticks per 1kg of tow.</td></tr>
-  <tr><td className="py-4 font-black">Cig. Paper</td><td className="py-4 text-emerald-400">x{CONVERSIONS.PAPER}</td><td>20k sticks per 1kg of paper rolls.</td></tr>
-  <tr><td className="py-4 font-black">Filter Rods</td><td className="py-4 text-emerald-400">x{CONVERSIONS.RODS}</td><td>Standard 1:6 rod-to-stick ratio.</td></tr>
-  {/* NEW CIGARETTE CONSTANTS */}
-  <tr className="bg-emerald-900/10">
-    <td className="py-4 font-black text-emerald-400">Cigarettes (MIL)</td>
-    <td className="py-4 text-emerald-400">x1,000,000</td>
-    <td>Standard "Mille" unit (1,000 sticks per unit, 1,000 units per MIL).</td>
+<tbody className="divide-y divide-slate-100">
+  <tr>
+    <td className="py-4 font-black">Tobacco Leaf</td>
+    <td className="py-4 text-blue-700 font-mono">x{localConversions.TOBACCO.toLocaleString()}</td>
+    <td className="text-slate-500 text-sm">{localConversions.TOBACCO.toLocaleString()} sticks per 1kg of leaf.</td>
   </tr>
-  <tr className="bg-emerald-900/10">
-    <td className="py-4 font-black text-emerald-400">Cigarettes (KG)</td>
-    <td className="py-4 text-emerald-400">x{CONVERSIONS.CIGARETTES_EXPORT}</td>
-    <td>Weight-to-Stick conversion (Approx. 1g per stick including packaging).</td>
+  <tr>
+    <td className="py-4 font-black">Acetate Tow</td>
+    <td className="py-4 text-blue-700 font-mono">x{localConversions.TOW.toLocaleString()}</td>
+    <td className="text-slate-500 text-sm">{localConversions.TOW.toLocaleString()} sticks per 1kg of tow.</td>
+  </tr>
+  <tr>
+    <td className="py-4 font-black">Cig. Paper</td>
+    <td className="py-4 text-blue-700 font-mono">x{localConversions.PAPER.toLocaleString()}</td>
+    <td className="text-slate-500 text-sm">{localConversions.PAPER.toLocaleString()} sticks per 1kg of paper rolls.</td>
+  </tr>
+  <tr>
+    <td className="py-4 font-black">Filter Rods</td>
+    <td className="py-4 text-blue-700 font-mono">x{localConversions.RODS.toLocaleString()}</td>
+    <td className="text-slate-500 text-sm">Standard 1:{localConversions.RODS} rod-to-stick ratio.</td>
+  </tr>
+  
+  {/* NEW DYNAMIC CIGARETTE CONSTANTS */}
+  <tr className="bg-blue-50/50">
+    <td className="py-4 font-black text-blue-700">Cigarettes (MIL)</td>
+    <td className="py-4 text-blue-700 font-mono">x{localConversions.CIGARETTES_MIL.toLocaleString()}</td>
+    <td className="text-slate-500 text-sm italic">Standard "Mille" unit override (Adjustable for regional variations).</td>
+  </tr>
+  <tr className="bg-blue-50/50">
+    <td className="py-4 font-black text-blue-700">Cigarettes (KG)</td>
+    <td className="py-4 text-blue-700 font-mono">x{localConversions.CIGARETTES_EXPORT.toLocaleString()}</td>
+    <td className="text-slate-500 text-sm italic">Weight-to-Stick conversion (Approx. {1000 / localConversions.CIGARETTES_EXPORT}g per stick).</td>
   </tr>
 </tbody>
                   </table>
