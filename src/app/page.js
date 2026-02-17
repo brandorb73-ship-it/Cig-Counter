@@ -178,9 +178,9 @@ const auditResult = useMemo(() => {
   { name: 'Paper', val: nat.paper },
   { name: 'Rods', val: nat.rods }
 ].filter(p => p.val > 0).reduce((prev, curr) => (prev.val < curr.val ? prev : curr), { name: 'No Precursors Found', val: 0 }),
-      taxLoss: natGap * CONVERSIONS.TAX_PER_STICK 
+taxLoss: natGap * localConversions.TAX_PER_STICK 
     };
-  }, [rawData, riskThreshold]);
+  }, [rawData, riskThreshold, localConversions]); // <--- Line 183 becomes this
 
   const filteredEntities = useMemo(() => {
     return (auditResult?.entities || []).filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()));
