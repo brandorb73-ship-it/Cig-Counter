@@ -637,11 +637,11 @@ const auditResult = useMemo(() => {
             </div>
           )}
         </div>
-      )}
+     )}
     </div>
   );
 }
-}
+
 function SummaryBox({ title, val, sub, color, isText }) {
     // Ensure val isn't null/undefined to prevent .toLocaleString() errors
     const displayValue = isText 
