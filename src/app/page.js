@@ -531,7 +531,10 @@ const auditResult = useMemo(() => {
                   <div className="bg-white border-2 border-slate-200 p-6 rounded-3xl space-y-4 shadow-sm">
                     <div>
                       <p className="font-black text-black text-sm uppercase">Tobacco Ceiling</p>
-                      <p className="text-xs text-slate-500 leading-relaxed font-bold">The theoretical maximum number of cigarettes producible from available leaf. Formula: Leaf (kg) × {CONVERSIONS.TOBACCO}.</p>
+                      <p className="text-xs text-slate-500 leading-relaxed font-bold">
+  The theoretical maximum number of cigarettes producible from available leaf. 
+  Formula: Leaf (kg) × {localConversions.TOBACCO.toLocaleString()}.
+</p>
                     </div>
                     <div>
                       <p className="font-black text-black text-sm uppercase">Bottleneck</p>
