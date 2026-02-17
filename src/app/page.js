@@ -72,10 +72,9 @@ const auditResult = useMemo(() => {
     if (!rawData || rawData.length === 0) return null;
     
     const registry = {};
-    // 1. Initialize 'nat' first
     let nat = { tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 };
 
-    // 2. Process Raw Data
+    // 1. Process Raw Data Loop
     rawData.forEach(row => {
       const entity = row.Entity || row.Importer || row.Exporter;
       if (!entity) return;
@@ -96,74 +95,19 @@ const auditResult = useMemo(() => {
         let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * localConversions.CIGARETTES_EXPORT : convQty;
         registry[entity].actual += sticks;
         nat.actual += sticks;
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: (unit === 'MIL' ? 1000000 : localConversions.CIGARETTES_EXPORT) };
-        registry[entity].materials[mat].rawQty += qty;
-        registry[entity].materials[mat].sticks += sticks;
       } else if (mat && localConversions[mat]) {
         const sticks = convQty * localConversions[mat];
         registry[entity][mat.toLowerCase()] += sticks;
-        if (mat === 'TOBACCO') { nat.tobaccoKg += convQty; nat.tobacco += sticks; }
-        if (mat === 'TOW') { nat.towKg += convQty; nat.tow += sticks; }
-        if (mat === 'PAPER') { nat.paperKg += convQty; nat.paper += sticks; }
-        if (mat === 'RODS') { nat.rodsUnits += convQty; nat.rods += sticks; }
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: localConversions[mat] };
-        registry[entity].materials[mat].rawQty += qty;
-        registry[entity].materials[mat].sticks += sticks;
+        if (mat === 'TOBACCO') { nat.tobacco += sticks; }
+        if (mat === 'TOW') { nat.tow += sticks; }
+        if (mat === 'PAPER') { nat.paper += sticks; }
+        if (mat === 'RODS') { nat.rods += sticks; }
       }
     });
 
-    // 3. Define National Metrics after loop
-    const natGap = Math.max(0, nat.actual - nat.tobacco);
+    // 2. National Logic (Calculated ONCE)
+    const currentNatGap = Math.max(0, nat.actual - nat.tobacco);
     
-    const precursorList = [
-      { name: 'Tobacco', val: nat.tobacco },
-      { name: 'Tow', val: nat.tow },
-      { name: 'Paper', val: nat.paper },
-      { name: 'Rods', val: nat.rods }
-    ].filter(p => p.val > 0);
-
-    const currentBottleneck = precursorList.length > 0 
-      ? precursorList.reduce((prev, curr) => (prev.val < curr.val ? prev : curr))
-      : { name: 'No Data', val: 0 };
-
-// 4. Map Entities
-    const entities = Object.values(registry).map(e => {
-      const pots = [e.tobacco, e.tow, e.paper, e.rods].filter(v => v > 0);
-      const minPot = pots.length > 0 ? Math.min(...pots) : 0;
-      const thresholdMultiplier = 1 + (riskThreshold / 100);
-      const variance = pots.length > 0 ? ((Math.max(...pots) - minPot) / Math.max(...pots)) * 100 : 0;
-      const reliability = Math.max(0, 100 - variance);
-      const productionGap = Math.max(0, e.actual - minPot);
-      const taxRisk = productionGap * localConversions.TAX_PER_STICK;
-      const isCritical = (e.actual > 0 && e.tobacco === 0) || (e.actual > (minPot * thresholdMultiplier));
-      
-      return { 
-        ...e, minPot, reliability, taxRisk, productionGap,
-        risk: isCritical ? 'CRITICAL' : 'RECONCILED'
-      };
-    }).sort((a, b) => b.actual - a.actual); // <--- This now correctly closes the entities block
-
-    // 5. Final Calculations
-    const natGap = Math.max(0, nat.actual - nat.tobacco);
-
-    const leakageData = [
-      { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
-      { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' },
-      { name: 'Paper Deficit', value: Math.max(0, nat.actual - nat.paper), fill: '#64748b' },
-      { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
-    ].filter(d => d.value > 0);
-
-  // 1. Calculations (Done once)
-    const natGap = Math.max(0, nat.actual - nat.tobacco);
-    
-    const leakageData = [
-      { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
-      { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' },
-      { name: 'Paper Deficit', value: Math.max(0, nat.actual - nat.paper), fill: '#64748b' },
-      { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
-    ].filter(d => d.value > 0);
-
-    // 2. Bottleneck Logic (Done once)
     const currentBottleneck = [
       { name: 'Tobacco', val: nat.tobacco },
       { name: 'Tow', val: nat.tow },
@@ -171,15 +115,32 @@ const auditResult = useMemo(() => {
       { name: 'Rods', val: nat.rods }
     ].filter(p => p.val > 0).reduce((prev, curr) => (prev.val < curr.val ? prev : curr), { name: 'No Precursors Found', val: 0 });
 
-    // 3. THE ONLY RETURN STATEMENT YOU NEED
+    // 3. Entity Mapping
+    const entities = Object.values(registry).map(e => {
+      const pots = [e.tobacco, e.tow, e.paper, e.rods].filter(v => v > 0);
+      const minPot = pots.length > 0 ? Math.min(...pots) : 0;
+      const productionGap = Math.max(0, e.actual - minPot);
+      const isCritical = (e.actual > 0 && e.tobacco === 0) || (e.actual > (minPot * (1 + riskThreshold/100)));
+      
+      return { 
+        ...e, minPot, productionGap,
+        reliability: pots.length > 0 ? Math.max(0, 100 - (((Math.max(...pots) - minPot) / Math.max(...pots)) * 100)) : 0,
+        risk: isCritical ? 'CRITICAL' : 'RECONCILED'
+      };
+    }).sort((a, b) => b.actual - a.actual);
+
+    // 4. Return Everything
     return { 
       entities, 
       nat, 
-      productionGap: natGap, 
-      leakageData,
-      shadowProb: nat.actual > 0 ? Math.min(100, (natGap / nat.actual) * 100) : 0,
+      productionGap: currentNatGap, 
+      leakageData: [
+        { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
+        { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' }
+      ].filter(d => d.value > 0),
+      shadowProb: nat.actual > 0 ? Math.min(100, (currentNatGap / nat.actual) * 100) : 0,
       bottleneck: currentBottleneck,
-      taxLoss: natGap * localConversions.TAX_PER_STICK 
+      taxLoss: currentNatGap * localConversions.TAX_PER_STICK 
     };
   }, [rawData, riskThreshold, localConversions]);
 
