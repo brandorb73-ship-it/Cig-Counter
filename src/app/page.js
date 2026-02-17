@@ -1,27 +1,18 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import Papa from 'papaparse';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  Cell, PieChart, Pie, Legend 
-} from 'recharts';
-import { 
-  ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, 
-  Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, 
-  Sliders, CheckCircle, Target, Gavel, Zap, Download, XCircle, 
-  ChevronRight, HelpCircle, Landmark, TrendingUp, Fingerprint, EyeOff 
-} from 'lucide-react';
+// ... other imports
 
-const [localConversions, setLocalConversions] = useState({
+// 1. Move static data outside the component
+const DEFAULT_CONVERSIONS = {
   TOBACCO: 1333.33,
   TOW: 8333.33,
   PAPER: 20000,
   RODS: 6,
-  CIGARETTES_EXPORT: 1000, // For KG
-  CIGARETTES_MIL: 1000000,   // Add this for MIL units
+  CIGARETTES_EXPORT: 1000,
+  CIGARETTES_MIL: 1000000,
   TAX_PER_STICK: 0.15,
   UNITS: { 'KG': 1, 'KGM': 1, 'TON': 1000, 'MT': 1000, 'LB': 0.4535, 'MIL': 1 }
-});
+};
 
 const Icons = {
   'TOBACCO': <Database className="text-amber-700" size={18} />,
@@ -30,11 +21,42 @@ const Icons = {
   'RODS': <Pipette className="text-purple-700" size={18} />,
   'CIGARETTES': <Activity className="text-emerald-700" size={18} />
 };
+
 const formatValue = (value) => new Intl.NumberFormat('en-US', { 
   notation: "compact", 
   compactDisplay: "short" 
 }).format(value);
+
+// 2. Helper Components (Keep these outside too)
+const SummaryBox = ({ title, val, sub, color, isText }) => (
+  <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm">
+    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
+    <p className={`text-2xl font-black ${color}`}>{val}</p>
+    <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">{sub}</p>
+  </div>
+);
+
+const BalanceRow = ({ label, kg, sticks, unit, color, ratio }) => (
+  <div className="group relative">
+    <div className="flex justify-between items-end border-b border-slate-100 pb-3">
+      <div className="flex items-center gap-4">
+        <div className={`w-2 h-10 rounded-full ${color}`}/>
+        <div>
+          <p className="text-[10px] font-black text-slate-400 uppercase">{label}</p>
+          <p className="text-xl font-black">{Math.round(kg || 0).toLocaleString()} <span className="text-[10px] text-slate-300">{unit}</span></p>
+          <p className="text-[9px] font-black text-blue-600/60 uppercase">× {(ratio || 0).toLocaleString()} Yield</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="text-base font-black text-blue-700 font-mono">{Math.round(sticks || 0).toLocaleString()}</p>
+        <p className="text-[8px] font-bold text-slate-400 uppercase">Sticks Eq</p>
+      </div>
+    </div>
+  </div>
+);
+
 export default function ObsidianPrimeV12Final() {
+  // 3. ALL HOOKS MUST BE AT THE TOP OF THE FUNCTION
   const [url, setUrl] = useState('');
   const [rawData, setRawData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,8 +65,9 @@ export default function ObsidianPrimeV12Final() {
   const [reportTitle, setReportTitle] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [riskThreshold, setRiskThreshold] = useState(10);
-  // Add CIGARETTES_EXPORT to the keys we can override
-const [localConversions, setLocalConversions] = useState(CONVERSIONS);
+  
+  // SINGLE state definition for conversions
+  const [localConversions, setLocalConversions] = useState(DEFAULT_CONVERSIONS);
 
   useEffect(() => {
     try {
