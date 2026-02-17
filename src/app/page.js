@@ -280,6 +280,49 @@ export default function ForensicGradeV12() {
                       <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
                     </div>
                 </div>
+            <p className="text-emerald-400 font-bold italic flex gap-2"><CheckCircle size={18}/> Reconciled: National production volumes are within the legal precursor envelope.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* COMPLIANCE RATIOS PANEL */}
+        <div className="bg-white border-2 border-slate-200 p-10 rounded-[2.5rem] shadow-sm flex flex-col justify-center">
+          <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
+            <Target size={18} className="text-blue-700"/> Compliance Metrics
+          </h2>
+          <div className="grid grid-cols-2 gap-8">
+            <div className="border-l-2 border-slate-100 pl-6">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Precursor Utilization</p>
+              <p className="text-2xl font-black text-black">
+                {auditResult.nat.actual > 0 
+                  ? Math.min(100, (auditResult.nat.tobacco / auditResult.nat.actual) * 100).toFixed(1) 
+                  : 0}%
+              </p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">Leaf-to-Export Ratio</p>
+            </div>
+            <div className="border-l-2 border-slate-100 pl-6">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Audit Integrity</p>
+              <p className="text-2xl font-black text-blue-700">
+                {auditResult.entities.filter(e => e.reliability > 80).length} / {auditResult.entities.length}
+              </p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">High-Confidence Entities</p>
+            </div>
+          </div>
+          <div className="mt-10 pt-8 border-t border-slate-100">
+             <div className="flex justify-between items-center mb-2">
+                <span className="text-[10px] font-black uppercase text-slate-400">Bottleneck Severity</span>
+                <span className="text-[10px] font-black text-red-600 uppercase">Critical Impact</span>
+             </div>
+             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div 
+                  className="bg-red-500 h-full rounded-full" 
+                  style={{ width: `${Math.min(100, (auditResult.productionGap / (auditResult.nat.actual || 1)) * 100)}%` }}
+                />
+             </div>
+          </div>
+        </div>
+      </div>
               </div>
             </div>
           ) : activeTab === 'entities' ? (
