@@ -206,6 +206,45 @@ export default function ObsidianPrimeV12Final() {
 
           {activeTab === 'country' ? (
             <div className="space-y-10">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+  <SummaryBox 
+    title="Tobacco Ceiling" 
+    val={formatValue(auditResult.nat.tobacco)} 
+    sub="MAX STICKS FROM LEAF" 
+    color="text-amber-700" 
+    isText 
+  />
+  <SummaryBox 
+    title="Bottleneck" 
+    val={auditResult.bottleneck.name} 
+    sub="STRICTEST PRECURSOR" 
+    color="text-blue-700" 
+    isText 
+  />
+  <SummaryBox 
+    title="Production Gap" 
+    val={formatValue(auditResult.productionGap)} 
+    sub="UNSUPPORTED VOLUME" 
+    color="text-red-600" 
+    isText 
+  />
+  <SummaryBox 
+    title="Tax Leakage" 
+    val={`$${formatValue(auditResult.taxLoss)}`} 
+    sub="EST. EXCISE EVASION" 
+    color="text-emerald-700" 
+    isText 
+  />
+  <div className="bg-slate-900 border-2 border-slate-800 p-6 rounded-3xl shadow-xl flex flex-col justify-center overflow-hidden group relative">
+    <div className="relative z-10">
+      <p className="text-[10px] text-white uppercase tracking-widest font-black flex items-center gap-2">
+        <EyeOff size={14}/> Shadow Market
+      </p>
+      <p className="text-4xl font-black text-white">{Math.round(auditResult.shadowProb)}%</p>
+    </div>
+    <Zap className="absolute right-[-10px] bottom-[-10px] opacity-10 text-red-500" size={100} />
+  </div>
+</div>
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
   <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
     <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> National Supply vs Output</h2>
