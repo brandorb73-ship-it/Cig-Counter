@@ -344,9 +344,11 @@ export default function ForensicGradeV13() {
               <div className="bg-white p-10 rounded-[2.5rem] border-2 border-slate-200 shadow-sm">
                 <h3 className="text-lg font-black uppercase mb-6 flex items-center gap-2 text-blue-700"><Gavel size={20}/> Audit Protocol</h3>
                 <div className="space-y-6 text-sm font-bold text-slate-600 leading-relaxed">
-                  <p className="border-l-4 border-amber-500 pl-4">1. Identify the <span className="text-black">Precursor Ceiling</span> (The lowest stick potential across Leaf, Tow, and Paper).</p>
-                  <p className="border-l-4 border-blue-500 pl-4">2. Map <span className="text-black">Export Output</span> against this ceiling.</p>
-                  <p className="border-l-4 border-red-500 pl-4">3. Flag <span className="text-red-600">Shadow Sourcing</span> where Output > Ceiling * Risk Sensitivity.</p>
+                 <div className="space-y-6 text-sm font-bold text-slate-600 leading-relaxed">
+  <p className="border-l-4 border-amber-500 pl-4">1. Identify the <span className="text-black">Precursor Ceiling</span> (The lowest stick potential across Leaf, Tow, and Paper).</p>
+  <p className="border-l-4 border-blue-500 pl-4">2. Map <span className="text-black">Export Output</span> against this ceiling.</p>
+  <p className="border-l-4 border-red-500 pl-4">3. Flag <span className="text-red-600">Shadow Sourcing</span> where Output {" > "} Ceiling * Risk Sensitivity.</p>
+</div>
                 </div>
               </div>
               <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white shadow-xl">
