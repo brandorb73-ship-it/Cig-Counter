@@ -220,7 +220,13 @@ export default function ObsidianPrimeV12Final() {
                   <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> National Supply vs Output</h2>
                   <div className="h-[350px]">
                     <ResponsiveContainer>
-                        <BarChart data={[{ name: 'Leaf', val: auditResult.nat.tobacco }, { name: 'Tow', val: auditResult.nat.tow }, { name: 'Paper', val: auditResult.nat.paper }, { name: 'Actual', val: auditResult.nat.actual }]}>
+                        <BarChart:data={[
+  { name: 'Leaf', val: auditResult.nat.tobacco, fill: '#f59e0b' },
+  { name: 'Tow', val: auditResult.nat.tow, fill: '#0ea5e9' },
+  { name: 'Paper', val: auditResult.nat.paper, fill: '#64748b' },
+  { name: 'Rods', val: auditResult.nat.rods, fill: '#a855f7' }, // Added Rods
+  { name: 'Actual', val: auditResult.nat.actual, fill: '#10b981' }
+]}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" fontSize={12} fontWeight="bold" axisLine={false} tickLine={false} />
                         <YAxis fontSize={10} axisLine={false} tickLine={false} />
@@ -238,7 +244,7 @@ export default function ObsidianPrimeV12Final() {
                   <div className="h-[350px]">
                     <ResponsiveContainer>
                       <PieChart>
-                        <Pie data={auditResult.leakageData} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value" stroke="none">
+                       <Pie data={auditResult.leakageData} label={({ name, value }) => `${name}: ${formatValue(value)}`} // Added formatted labels innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value" stroke="none">
                             {auditResult.leakageData.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
                         </Pie>
                         <Tooltip />
@@ -257,6 +263,7 @@ export default function ObsidianPrimeV12Final() {
                   <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
                   <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
                   <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
+                <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / 1000} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={1000} />
                 </div>
               </div>
 
