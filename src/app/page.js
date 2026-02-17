@@ -67,7 +67,7 @@ const auditResult = useMemo(() => {
       tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 
     };
 
-    // 1. Process Raw Data Loop
+ // 1. Process Raw Data Loop
     rawData.forEach(row => {
       const entity = row.Entity || row.Importer || row.Exporter;
       if (!entity) return;
@@ -86,8 +86,8 @@ const auditResult = useMemo(() => {
       const convQty = qty * factor;
       registry[entity].tx += 1;
 
-if (mat === 'CIGARETTES') {
-        // Use the live override localConversions.CIGARETTES_MIL instead of 1,000,000
+      // START OF CONDITIONAL BLOCK
+      if (mat === 'CIGARETTES') {
         let sticks = (unit === 'MIL') 
           ? qty * localConversions.CIGARETTES_MIL 
           : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) 
@@ -100,19 +100,15 @@ if (mat === 'CIGARETTES') {
         if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
-      }
-        
-        // This fixes the Target Tab crash by ensuring the material object exists
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit };
-        registry[entity].materials[mat].rawQty += qty;
-        registry[entity].materials[mat].sticks += sticks;
 
       } else if (mat && localConversions[mat]) {
         const sticks = convQty * localConversions[mat];
         const key = mat.toLowerCase();
+        
+        // Update Entity Registry
         registry[entity][key] += sticks;
         
-        // This fixes the National Ledger by storing the raw weights
+        // Update National Ledger Weights
         if (mat === 'TOBACCO') { nat.tobaccoKg += convQty; nat.tobacco += sticks; }
         if (mat === 'TOW') { nat.towKg += convQty; nat.tow += sticks; }
         if (mat === 'PAPER') { nat.paperKg += convQty; nat.paper += sticks; }
@@ -123,8 +119,7 @@ if (mat === 'CIGARETTES') {
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
       }
-    });
-
+    }); // END of forEach
     // 2. National Logic
     const currentNatGap = Math.max(0, nat.actual - nat.tobacco);
     
