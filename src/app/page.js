@@ -1,6 +1,10 @@
 "use client";
-import React, { useState, useEffect, useMemo } from 'react';
-// ... other imports
+import { 
+  ShieldAlert, Activity, Database, Wind, FileText, Pipette, Trash2, 
+  Calculator, AlertTriangle, RefreshCcw, Save, History, Search, Info, 
+  Sliders, CheckCircle, Target, Gavel, Zap, Download, XCircle, 
+  ChevronRight, HelpCircle, Landmark, TrendingUp, Fingerprint, EyeOff 
+} from 'lucide-react';
 
 // 1. Move static data outside the component
 const DEFAULT_CONVERSIONS = {
