@@ -638,13 +638,23 @@ const auditResult = useMemo(() => {
     </div>
   );
 }
-
 function SummaryBox({ title, val, sub, color, isText }) {
+    // Ensure val isn't null/undefined to prevent .toLocaleString() errors
+    const displayValue = isText 
+        ? (val || "---") 
+        : Math.round(Number(val) || 0).toLocaleString();
+
     return (
-        <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm hover:border-blue-100 transition-all">
-            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">{title}</p>
-            <p className={`text-3xl font-black ${color}`}>{isText ? val : Math.round(val).toLocaleString()}</p>
-            <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tighter">{sub}</p>
+        <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm hover:border-blue-100 transition-all group">
+            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest group-hover:text-blue-600 transition-colors">
+                {title}
+            </p>
+            <p className={`text-3xl font-black ${color} truncate`} title={isText ? val : undefined}>
+                {displayValue}
+            </p>
+            <p className="text-[9px] font-bold text-slate-500 mt-1 uppercase tracking-tighter">
+                {sub}
+            </p>
         </div>
     );
 }
