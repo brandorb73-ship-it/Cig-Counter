@@ -348,7 +348,7 @@ const auditResult = useMemo(() => {
     <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={localConversions.TOW} />
     <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={localConversions.PAPER} />
     <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={localConversions.RODS} />
-    <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / 1000} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={1000} />
+    <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / (localConversions.CIGARETTES_EXPORT || 1000)} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={localConversions.CIGARETTES_EXPORT} />
   </div>
 </div>
 
@@ -590,6 +590,11 @@ function SummaryBox({ title, val, sub, color, isText }) {
 }
 
 function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
+  // Use 0 as fallback to prevent .toLocaleString() errors on undefined values
+  const safeKg = kg || 0;
+  const safeSticks = sticks || 0;
+  const safeRatio = ratio || 0;
+
   return (
     <div className="group relative">
       <div className="flex justify-between items-end cursor-help border-b border-slate-100 pb-3 hover:border-blue-200 transition-colors">
@@ -597,17 +602,42 @@ function BalanceRow({ label, kg, sticks, unit, color, ratio }) {
           <div className={`w-2 h-10 rounded-full ${color}`}/>
           <div>
             <p className="text-[10px] font-black uppercase text-slate-400 tracking-tighter">{label}</p>
-            <p className="text-xl font-black text-black">{Math.round(kg).toLocaleString()} <span className="text-[10px] font-bold text-slate-300 uppercase">{unit}</span></p>
+            <p className="text-xl font-black text-black">
+              {Math.round(safeKg).toLocaleString()} 
+              <span className="text-[10px] font-bold text-slate-300 uppercase ml-1">{unit}</span>
+            </p>
+            {/* Added this visual indicator so the factor is visible even without hover */}
+            <p className="text-[9px] font-black text-blue-600/60 uppercase tracking-tighter">
+              × {safeRatio.toLocaleString()} Yield
+            </p>
           </div>
         </div>
-        <div className="text-right"><p className="text-base font-black text-blue-700 font-mono tracking-tighter">{Math.round(sticks).toLocaleString()}</p><p className="text-[8px] font-bold text-slate-400 uppercase">Sticks Eq</p></div>
+        <div className="text-right">
+          <p className="text-base font-black text-blue-700 font-mono tracking-tighter">
+            {Math.round(safeSticks).toLocaleString()}
+          </p>
+          <p className="text-[8px] font-bold text-slate-400 uppercase">Sticks Eq</p>
+        </div>
       </div>
-      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute right-0 bottom-full mb-3 z-[60] bg-slate-900 text-white p-5 rounded-xl text-[10px] font-mono min-w-[240px] shadow-2xl transition-all border border-slate-700 pointer-events-none">
-         <div className="flex items-center gap-2 text-blue-400 font-black uppercase mb-3 border-b border-slate-700 pb-2"><Calculator size={14}/> Forensic Conversion</div>
+
+      {/* Forensic Tooltip on Hover */}
+      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 absolute left-0 bottom-full mb-3 z-[60] bg-slate-900 text-white p-5 rounded-2xl text-[10px] font-mono min-w-[240px] shadow-2xl transition-all border border-slate-700 pointer-events-none scale-95 group-hover:scale-100 origin-bottom-left">
+         <div className="flex items-center gap-2 text-blue-400 font-black uppercase mb-3 border-b border-slate-800 pb-2">
+           <Calculator size={14}/> Forensic Conversion
+         </div>
          <div className="space-y-2">
-            <div className="flex justify-between"><span>Physical:</span> <span>{Math.round(kg).toLocaleString()} {unit}</span></div>
-            <div className="flex justify-between"><span>Material Factor:</span> <span>x {ratio}</span></div>
-            <div className="flex justify-between pt-2 border-t border-slate-700 text-emerald-400 font-black text-[11px]"><span>Potential:</span> <span>{Math.round(sticks).toLocaleString()}</span></div>
+            <div className="flex justify-between text-slate-400">
+              <span>Input Physical:</span> 
+              <span className="text-white font-bold">{Math.round(safeKg).toLocaleString()} {unit}</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Material Factor:</span> 
+              <span className="text-blue-400 font-bold">× {safeRatio.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between pt-2 border-t border-slate-800 text-emerald-400 font-black text-[11px]">
+              <span>Stick Potential:</span> 
+              <span>{Math.round(safeSticks).toLocaleString()}</span>
+            </div>
          </div>
       </div>
     </div>
