@@ -153,15 +153,9 @@ const auditResult = useMemo(() => {
       { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
     ].filter(d => d.value > 0);
 
-    return { 
-      entities, nat, productionGap: natGap, leakageData,
-      shadowProb: nat.actual > 0 ? Math.min(100, (natGap / nat.actual) * 100) : 0,
-      bottleneck: currentBottleneck,
-      taxLoss: natGap * localConversions.TAX_PER_STICK 
-    };
-  }, [rawData, riskThreshold, localConversions]); 
-    
+  // 1. Calculations (Done once)
     const natGap = Math.max(0, nat.actual - nat.tobacco);
+    
     const leakageData = [
       { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
       { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' },
@@ -169,18 +163,25 @@ const auditResult = useMemo(() => {
       { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
     ].filter(d => d.value > 0);
 
+    // 2. Bottleneck Logic (Done once)
+    const currentBottleneck = [
+      { name: 'Tobacco', val: nat.tobacco },
+      { name: 'Tow', val: nat.tow },
+      { name: 'Paper', val: nat.paper },
+      { name: 'Rods', val: nat.rods }
+    ].filter(p => p.val > 0).reduce((prev, curr) => (prev.val < curr.val ? prev : curr), { name: 'No Precursors Found', val: 0 });
+
+    // 3. THE ONLY RETURN STATEMENT YOU NEED
     return { 
-      entities, nat, productionGap: natGap, leakageData,
+      entities, 
+      nat, 
+      productionGap: natGap, 
+      leakageData,
       shadowProb: nat.actual > 0 ? Math.min(100, (natGap / nat.actual) * 100) : 0,
-     bottleneck: [
-  { name: 'Tobacco', val: nat.tobacco },
-  { name: 'Tow', val: nat.tow },
-  { name: 'Paper', val: nat.paper },
-  { name: 'Rods', val: nat.rods }
-].filter(p => p.val > 0).reduce((prev, curr) => (prev.val < curr.val ? prev : curr), { name: 'No Precursors Found', val: 0 }),
-taxLoss: natGap * localConversions.TAX_PER_STICK 
+      bottleneck: currentBottleneck,
+      taxLoss: natGap * localConversions.TAX_PER_STICK 
     };
-  }, [rawData, riskThreshold, localConversions]); // <--- Line 183 becomes this
+  }, [rawData, riskThreshold, localConversions]);
 
   const filteredEntities = useMemo(() => {
     return (auditResult?.entities || []).filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()));
