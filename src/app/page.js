@@ -383,12 +383,10 @@ export default function ForensicGradeV12() {
                 />
              </div>
           </div>
-        </div>
-      </div>
-              </div>
-            </div>
-          ) : activeTab === 'entities' ? (
-            <div className="space-y-6">
+      </div> {/* This closes the Forensic/Compliance Grid */}
+      </div> {/* This closes the National Intel 'country' tab container */}
+    ) : activeTab === 'entities' ? (
+      <div className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-3xl border border-slate-200">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
