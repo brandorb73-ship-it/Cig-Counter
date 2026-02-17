@@ -68,56 +68,65 @@ const [localConversions, setLocalConversions] = useState(CONVERSIONS);
     if(window.confirm("CRITICAL: Wipe current audit?")) { setRawData([]); setUrl(''); }
   };
 
-  const auditResult = useMemo(() => {
+const auditResult = useMemo(() => {
     if (!rawData || rawData.length === 0) return null;
+    
     const registry = {};
+    // 1. Initialize 'nat' first
     let nat = { tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 };
 
+    // 2. Process Raw Data
     rawData.forEach(row => {
-         const entity = row.Entity || row.Importer || row.Exporter;
+      const entity = row.Entity || row.Importer || row.Exporter;
       if (!entity) return;
       if (!registry[entity]) registry[entity] = { name: entity, tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, materials: {}, tx: 0 };
+      
       const mR = (row.Material || '').toUpperCase();
       const mat = mR.includes('TOBACCO') ? 'TOBACCO' : mR.includes('TOW') ? 'TOW' : 
                   mR.includes('PAPER') ? 'PAPER' : mR.includes('ROD') ? 'RODS' : 
                   (mR.includes('CIGARETTE') && !mR.includes('PAPER')) ? 'CIGARETTES' : null;
+      
       const qty = parseFloat(String(row.Quantity).replace(/,/g, '')) || 0;
       const unit = (row['Quantity Unit'] || '').toUpperCase().trim();
-      const factor = CONVERSIONS.UNITS[unit] || 1;
+      const factor = localConversions.UNITS[unit] || 1;
       const convQty = qty * factor;
       registry[entity].tx += 1;
 
       if (mat === 'CIGARETTES') {
-        let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * CONVERSIONS.CIGARETTES_EXPORT : convQty;
+        let sticks = (unit === 'MIL') ? qty * 1000000 : (['KG', 'KGM', 'TON', 'MT'].includes(unit)) ? convQty * localConversions.CIGARETTES_EXPORT : convQty;
         registry[entity].actual += sticks;
         nat.actual += sticks;
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: (unit === 'MIL' ? 1000000 : CONVERSIONS.CIGARETTES_EXPORT) };
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: (unit === 'MIL' ? 1000000 : localConversions.CIGARETTES_EXPORT) };
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
-      } else if (mat && CONVERSIONS[mat]) {
-        const sticks = convQty * CONVERSIONS[mat];
+      } else if (mat && localConversions[mat]) {
+        const sticks = convQty * localConversions[mat];
         registry[entity][mat.toLowerCase()] += sticks;
         if (mat === 'TOBACCO') { nat.tobaccoKg += convQty; nat.tobacco += sticks; }
         if (mat === 'TOW') { nat.towKg += convQty; nat.tow += sticks; }
         if (mat === 'PAPER') { nat.paperKg += convQty; nat.paper += sticks; }
         if (mat === 'RODS') { nat.rodsUnits += convQty; nat.rods += sticks; }
-        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: CONVERSIONS[mat] };
+        if (!registry[entity].materials[mat]) registry[entity].materials[mat] = { rawQty: 0, sticks: 0, unit, ratioUsed: localConversions[mat] };
         registry[entity].materials[mat].rawQty += qty;
         registry[entity].materials[mat].sticks += sticks;
       }
     });
-// --- START BOTTLENECK LOGIC ---
-    const precursors = [
+
+    // 3. Define National Metrics after loop
+    const natGap = Math.max(0, nat.actual - nat.tobacco);
+    
+    const precursorList = [
       { name: 'Tobacco', val: nat.tobacco },
       { name: 'Tow', val: nat.tow },
       { name: 'Paper', val: nat.paper },
       { name: 'Rods', val: nat.rods }
-    ].filter(p => p.val > 0); // This ignores materials with 0, so "None" doesn't trigger incorrectly
+    ].filter(p => p.val > 0);
 
-    const currentBottleneck = precursors.length > 0 
-      ? precursors.reduce((prev, curr) => (prev.val < curr.val ? prev : curr))
+    const currentBottleneck = precursorList.length > 0 
+      ? precursorList.reduce((prev, curr) => (prev.val < curr.val ? prev : curr))
       : { name: 'No Data', val: 0 };
-    // --- END BOTTLENECK LOGIC ---
+
+    // 4. Map Entities
     const entities = Object.values(registry).map(e => {
       const pots = [e.tobacco, e.tow, e.paper, e.rods].filter(v => v > 0);
       const minPot = pots.length > 0 ? Math.min(...pots) : 0;
@@ -125,18 +134,29 @@ const [localConversions, setLocalConversions] = useState(CONVERSIONS);
       const variance = pots.length > 0 ? ((Math.max(...pots) - minPot) / Math.max(...pots)) * 100 : 0;
       const reliability = Math.max(0, 100 - variance);
       const productionGap = Math.max(0, e.actual - minPot);
-      const taxRisk = productionGap * CONVERSIONS.TAX_PER_STICK;
+      const taxRisk = productionGap * localConversions.TAX_PER_STICK;
       const isCritical = (e.actual > 0 && e.tobacco === 0) || (e.actual > (minPot * thresholdMultiplier));
       
-return { 
-      entities, 
-      nat, 
-      productionGap: natGap, 
-      leakageData,
+      return { 
+        ...e, minPot, reliability, taxRisk, productionGap,
+        risk: isCritical ? 'CRITICAL' : 'RECONCILED'
+      };
+    }).sort((a, b) => b.actual - a.actual);
+
+    const leakageData = [
+      { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
+      { name: 'Tow Deficit', value: Math.max(0, nat.actual - nat.tow), fill: '#0ea5e9' },
+      { name: 'Paper Deficit', value: Math.max(0, nat.actual - nat.paper), fill: '#64748b' },
+      { name: 'Rod Deficit', value: Math.max(0, nat.actual - nat.rods), fill: '#a855f7' }
+    ].filter(d => d.value > 0);
+
+    return { 
+      entities, nat, productionGap: natGap, leakageData,
       shadowProb: nat.actual > 0 ? Math.min(100, (natGap / nat.actual) * 100) : 0,
-      bottleneck: currentBottleneck, // Connects the logic from above
+      bottleneck: currentBottleneck,
       taxLoss: natGap * localConversions.TAX_PER_STICK 
     };
+  }, [rawData, riskThreshold, localConversions]); // Crucial: Add localConversions to dependency array
     }).sort((a, b) => b.actual - a.actual);
 
     const natGap = Math.max(0, nat.actual - nat.tobacco);
