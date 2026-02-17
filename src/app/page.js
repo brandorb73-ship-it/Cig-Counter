@@ -54,7 +54,8 @@ export default function ObsidianPrimeV12Final() {
   const [reportTitle, setReportTitle] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [riskThreshold, setRiskThreshold] = useState(10);
-  const [localConversions, setLocalConversions] = useState(CONVERSIONS);
+  // Add CIGARETTES_EXPORT to the keys we can override
+const [localConversions, setLocalConversions] = useState(CONVERSIONS);
 
   useEffect(() => {
     try {
@@ -73,7 +74,7 @@ export default function ObsidianPrimeV12Final() {
     let nat = { tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, tobaccoKg: 0, towKg: 0, paperKg: 0, rodsUnits: 0 };
 
     rawData.forEach(row => {
-      const entity = row.Entity || row.Importer || row.Exporter;
+         const entity = row.Entity || row.Importer || row.Exporter;
       if (!entity) return;
       if (!registry[entity]) registry[entity] = { name: entity, tobacco: 0, tow: 0, paper: 0, rods: 0, actual: 0, materials: {}, tx: 0 };
       const mR = (row.Material || '').toUpperCase();
@@ -105,7 +106,18 @@ export default function ObsidianPrimeV12Final() {
         registry[entity].materials[mat].sticks += sticks;
       }
     });
+// --- START BOTTLENECK LOGIC ---
+    const precursors = [
+      { name: 'Tobacco', val: nat.tobacco },
+      { name: 'Tow', val: nat.tow },
+      { name: 'Paper', val: nat.paper },
+      { name: 'Rods', val: nat.rods }
+    ].filter(p => p.val > 0); // This ignores materials with 0, so "None" doesn't trigger incorrectly
 
+    const currentBottleneck = precursors.length > 0 
+      ? precursors.reduce((prev, curr) => (prev.val < curr.val ? prev : curr))
+      : { name: 'No Data', val: 0 };
+    // --- END BOTTLENECK LOGIC ---
     const entities = Object.values(registry).map(e => {
       const pots = [e.tobacco, e.tow, e.paper, e.rods].filter(v => v > 0);
       const minPot = pots.length > 0 ? Math.min(...pots) : 0;
@@ -116,11 +128,15 @@ export default function ObsidianPrimeV12Final() {
       const taxRisk = productionGap * CONVERSIONS.TAX_PER_STICK;
       const isCritical = (e.actual > 0 && e.tobacco === 0) || (e.actual > (minPot * thresholdMultiplier));
       
-      return { 
-        ...e, minPot, reliability, taxRisk, productionGap,
-        risk: isCritical ? 'CRITICAL' : 'RECONCILED',
-        violationType: (e.actual > 0 && e.tobacco === 0) ? 'ZERO_TOBACCO' : (e.actual > (minPot * thresholdMultiplier)) ? 'OVER_CAP' : 'NONE'
-      };
+return { 
+      entities, 
+      nat, 
+      productionGap: natGap, 
+      leakageData,
+      shadowProb: nat.actual > 0 ? Math.min(100, (natGap / nat.actual) * 100) : 0,
+      bottleneck: currentBottleneck, // Connects the logic from above
+      taxLoss: natGap * localConversions.TAX_PER_STICK 
+    };
     }).sort((a, b) => b.actual - a.actual);
 
     const natGap = Math.max(0, nat.actual - nat.tobacco);
@@ -438,20 +454,22 @@ export default function ObsidianPrimeV12Final() {
   <h3 className="text-xs font-black text-blue-700 uppercase tracking-widest mb-6 flex items-center gap-2">
     <Sliders size={18}/> Live Yield Overrides
   </h3>
-  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-    {['TOBACCO', 'TOW', 'PAPER', 'RODS'].map((key) => (
+  <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+    {['TOBACCO', 'TOW', 'PAPER', 'RODS', 'CIGARETTES_EXPORT'].map((key) => (
       <div key={key} className="space-y-2">
-        <label className="text-[10px] font-black text-slate-400 uppercase">{key} Multiplier</label>
+        <label className="text-[10px] font-black text-slate-400 uppercase">
+          {key === 'CIGARETTES_EXPORT' ? 'CIG (KG) Ratio' : `${key} Ratio`}
+        </label>
         <input 
           type="number" 
           className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 text-sm font-mono font-bold focus:border-blue-600 outline-none"
           value={localConversions[key]}
-          onChange={(e) => setLocalConversions({...localConversions, [key]: parseFloat(e.target.value)})}
+          onChange={(e) => setLocalConversions({...localConversions, [key]: parseFloat(e.target.value) || 0})}
         />
       </div>
     ))}
   </div>
-  <p className="mt-4 text-[10px] text-slate-400 italic">*Note: Changing these values will immediately recalculate all "Target Analytics" and "Shadow Market" percentages.</p>
+  <p className="mt-4 text-[10px] text-slate-400 italic">*Note: "CIG (KG) Ratio" defines how many sticks are estimated per 1kg of finished product weight.</p>
 </div>
               {/* Definitions Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
