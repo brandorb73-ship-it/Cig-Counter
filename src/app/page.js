@@ -27,34 +27,6 @@ const formatValue = (value) => new Intl.NumberFormat('en-US', {
   compactDisplay: "short" 
 }).format(value);
 
-// 2. Helper Components (Keep these outside too)
-const SummaryBox = ({ title, val, sub, color, isText }) => (
-  <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm">
-    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
-    <p className={`text-2xl font-black ${color}`}>{val}</p>
-    <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">{sub}</p>
-  </div>
-);
-
-const BalanceRow = ({ label, kg, sticks, unit, color, ratio }) => (
-  <div className="group relative">
-    <div className="flex justify-between items-end border-b border-slate-100 pb-3">
-      <div className="flex items-center gap-4">
-        <div className={`w-2 h-10 rounded-full ${color}`}/>
-        <div>
-          <p className="text-[10px] font-black text-slate-400 uppercase">{label}</p>
-          <p className="text-xl font-black">{Math.round(kg || 0).toLocaleString()} <span className="text-[10px] text-slate-300">{unit}</span></p>
-          <p className="text-[9px] font-black text-blue-600/60 uppercase">× {(ratio || 0).toLocaleString()} Yield</p>
-        </div>
-      </div>
-      <div className="text-right">
-        <p className="text-base font-black text-blue-700 font-mono">{Math.round(sticks || 0).toLocaleString()}</p>
-        <p className="text-[8px] font-bold text-slate-400 uppercase">Sticks Eq</p>
-      </div>
-    </div>
-  </div>
-);
-
 export default function ObsidianPrimeV12Final() {
   // 3. ALL HOOKS MUST BE AT THE TOP OF THE FUNCTION
   const [url, setUrl] = useState('');
