@@ -126,7 +126,7 @@ const auditResult = useMemo(() => {
       ? precursorList.reduce((prev, curr) => (prev.val < curr.val ? prev : curr))
       : { name: 'No Data', val: 0 };
 
-    // 4. Map Entities
+// 4. Map Entities
     const entities = Object.values(registry).map(e => {
       const pots = [e.tobacco, e.tow, e.paper, e.rods].filter(v => v > 0);
       const minPot = pots.length > 0 ? Math.min(...pots) : 0;
@@ -141,7 +141,10 @@ const auditResult = useMemo(() => {
         ...e, minPot, reliability, taxRisk, productionGap,
         risk: isCritical ? 'CRITICAL' : 'RECONCILED'
       };
-    }).sort((a, b) => b.actual - a.actual);
+    }).sort((a, b) => b.actual - a.actual); // <--- This now correctly closes the entities block
+
+    // 5. Final Calculations
+    const natGap = Math.max(0, nat.actual - nat.tobacco);
 
     const leakageData = [
       { name: 'Tobacco Deficit', value: Math.max(0, nat.actual - nat.tobacco), fill: '#f59e0b' },
@@ -156,7 +159,7 @@ const auditResult = useMemo(() => {
       bottleneck: currentBottleneck,
       taxLoss: natGap * localConversions.TAX_PER_STICK 
     };
-  }, [rawData, riskThreshold, localConversions]); // Crucial: Add localConversions to dependency array
+  }, [rawData, riskThreshold, localConversions]); 
     }).sort((a, b) => b.actual - a.actual);
 
     const natGap = Math.max(0, nat.actual - nat.tobacco);
