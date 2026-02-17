@@ -29,7 +29,10 @@ const Icons = {
   'RODS': <Pipette className="text-purple-700" size={18} />,
   'CIGARETTES': <Activity className="text-emerald-700" size={18} />
 };
-
+const formatValue = (value) => new Intl.NumberFormat('en-US', { 
+  notation: "compact", 
+  compactDisplay: "short" 
+}).format(value);
 export default function ObsidianPrimeV12Final() {
   const [url, setUrl] = useState('');
   const [rawData, setRawData] = useState([]);
@@ -203,69 +206,67 @@ export default function ObsidianPrimeV12Final() {
 
           {activeTab === 'country' ? (
             <div className="space-y-10">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <SummaryBox title="Tobacco Ceiling" val={auditResult.nat.tobacco} sub="MAX STICKS FROM LEAF" color="text-amber-700" />
-                <SummaryBox title="Bottleneck" val={auditResult.bottleneck.name} sub="STRICTEST PRECURSOR" color="text-blue-700" isText />
-                <SummaryBox title="Production Gap" val={auditResult.productionGap} sub="UNSUPPORTED VOLUME" color="text-red-600" />
-                <SummaryBox title="Tax Leakage" val={`$${(auditResult.taxLoss/1e6).toFixed(1)}M`} sub="EST. EXCISE EVASION" color="text-emerald-700" isText />
-                <div className="bg-slate-900 border-2 border-slate-800 p-6 rounded-3xl shadow-xl flex flex-col justify-center overflow-hidden group relative">
-                    <div className="relative z-10"><p className="text-[10px] text-white uppercase tracking-widest font-black flex items-center gap-2"><EyeOff size={14}/> Shadow Market</p><p className="text-4xl font-black text-white">{Math.round(auditResult.shadowProb)}%</p></div>
-                    <Zap className="absolute right-[-10px] bottom-[-10px] opacity-10 text-red-500" size={100} />
-                </div>
-              </div>
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+  <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
+    <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> National Supply vs Output</h2>
+    <div className="h-[350px]">
+      <ResponsiveContainer>
+        <BarChart data={[
+          { name: 'Leaf', val: auditResult.nat.tobacco, fill: '#f59e0b' },
+          { name: 'Tow', val: auditResult.nat.tow, fill: '#0ea5e9' },
+          { name: 'Paper', val: auditResult.nat.paper, fill: '#64748b' },
+          { name: 'Rods', val: auditResult.nat.rods, fill: '#a855f7' },
+          { name: 'Actual', val: auditResult.nat.actual, fill: '#10b981' }
+        ]}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+          <XAxis dataKey="name" fontSize={12} fontWeight="bold" axisLine={false} tickLine={false} />
+          <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={formatValue} />
+          <Tooltip cursor={{fill: '#f8fafc'}} formatter={(value) => formatValue(value)} />
+          <Bar dataKey="val" radius={[8, 8, 0, 0]}>
+            {[0, 1, 2, 3, 4].map((e, i) => (
+              <Cell key={i} fill={['#f59e0b', '#0ea5e9', '#64748b', '#a855f7', '#10b981'][i]} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
 
-              {/* PIE AND BAR CHART ROW */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
-                  <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Activity size={20} className="text-blue-700"/> National Supply vs Output</h2>
-                  <div className="h-[350px]">
-                    <ResponsiveContainer>
-                        <BarChart:data={[
-  { name: 'Leaf', val: auditResult.nat.tobacco, fill: '#f59e0b' },
-  { name: 'Tow', val: auditResult.nat.tow, fill: '#0ea5e9' },
-  { name: 'Paper', val: auditResult.nat.paper, fill: '#64748b' },
-  { name: 'Rods', val: auditResult.nat.rods, fill: '#a855f7' }, // Added Rods
-  { name: 'Actual', val: auditResult.nat.actual, fill: '#10b981' }
-]}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" fontSize={12} fontWeight="bold" axisLine={false} tickLine={false} />
-                        <YAxis fontSize={10} axisLine={false} tickLine={false} />
-                        <Tooltip cursor={{fill: '#f8fafc'}} />
-                        <Bar dataKey="val" radius={[8, 8, 0, 0]}>
-                            { [0,1,2,3].map((e,i) => <Cell key={i} fill={['#f59e0b', '#0ea5e9', '#64748b', '#10b981'][i]} />) }
-                        </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+  <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
+    <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Target size={20} className="text-red-600"/> Leakage Origins</h2>
+    <div className="h-[350px]">
+      <ResponsiveContainer>
+        <PieChart>
+          <Pie 
+            data={auditResult.leakageData} 
+            innerRadius={80} 
+            outerRadius={120} 
+            paddingAngle={5} 
+            dataKey="value" 
+            stroke="none"
+            label={({ name, value }) => `${name}: ${formatValue(value)}`}
+          >
+            {auditResult.leakageData.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
+          </Pie>
+          <Tooltip formatter={(value) => formatValue(value)} />
+          <Legend verticalAlign="bottom" height={36}/>
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
+</div>
 
-                <div className="bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-sm">
-                  <h2 className="text-sm font-black text-black uppercase tracking-widest mb-10 flex items-center gap-2"><Target size={20} className="text-red-600"/> Leakage Origins</h2>
-                  <div className="h-[350px]">
-                    <ResponsiveContainer>
-                      <PieChart>
-                       <Pie data={auditResult.leakageData} label={({ name, value }) => `${name}: ${formatValue(value)}`} // Added formatted labels innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value" stroke="none">
-                            {auditResult.leakageData.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
-                        </Pie>
-                        <Tooltip />
-                        <Legend verticalAlign="bottom" height={36}/>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-
-              {/* MATERIAL LEDGER */}
-              <div className="bg-white border-2 border-slate-100 p-10 rounded-[2.5rem] shadow-sm">
-                <h2 className="text-xs font-black text-blue-700 uppercase tracking-widest border-b-2 border-slate-50 pb-5 mb-8">Precursor Conversion Ledger</h2>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
-                  <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
-                  <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
-                  <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
-                  <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
-                <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / 1000} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={1000} />
-                </div>
-              </div>
+{/* UPDATED MATERIAL LEDGER WITH 5 COLUMNS */}
+<div className="bg-white border-2 border-slate-100 p-10 rounded-[2.5rem] shadow-sm">
+  <h2 className="text-xs font-black text-blue-700 uppercase tracking-widest border-b-2 border-slate-50 pb-5 mb-8">Precursor Conversion Ledger</h2>
+  <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
+    <BalanceRow label="Tobacco Leaf" kg={auditResult.nat.tobaccoKg} sticks={auditResult.nat.tobacco} unit="KG" color="bg-amber-600" ratio={CONVERSIONS.TOBACCO} />
+    <BalanceRow label="Acetate Tow" kg={auditResult.nat.towKg} sticks={auditResult.nat.tow} unit="KG" color="bg-sky-600" ratio={CONVERSIONS.TOW} />
+    <BalanceRow label="Cig. Paper" kg={auditResult.nat.paperKg} sticks={auditResult.nat.paper} unit="KG" color="bg-slate-600" ratio={CONVERSIONS.PAPER} />
+    <BalanceRow label="Filter Rods" kg={auditResult.nat.rodsUnits} sticks={auditResult.nat.rods} unit="PCS" color="bg-purple-600" ratio={CONVERSIONS.RODS} />
+    <BalanceRow label="Cigarettes" kg={auditResult.nat.actual / 1000} sticks={auditResult.nat.actual} unit="KGM eq" color="bg-emerald-600" ratio={1000} />
+  </div>
+</div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="bg-slate-900 text-white p-10 rounded-[2.5rem] shadow-xl">
