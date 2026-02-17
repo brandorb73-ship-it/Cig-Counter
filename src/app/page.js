@@ -464,12 +464,23 @@ export default function ObsidianPrimeV12Final() {
                     <thead className="text-slate-500 uppercase border-b border-slate-800">
                       <tr><th className="pb-4 text-left">Material</th><th className="pb-4 text-left">Multiplier</th><th className="pb-4 text-left">Logic</th></tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800">
-                      <tr><td className="py-4 font-black">Tobacco Leaf</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOBACCO}</td><td>{CONVERSIONS.TOBACCO} sticks per 1kg of leaf.</td></tr>
-                      <tr><td className="py-4 font-black">Acetate Tow</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOW}</td><td>{CONVERSIONS.TOW} sticks per 1kg of tow.</td></tr>
-                      <tr><td className="py-4 font-black">Cig. Paper</td><td className="py-4 text-emerald-400">x{CONVERSIONS.PAPER}</td><td>20k sticks per 1kg of paper rolls.</td></tr>
-                      <tr><td className="py-4 font-black">Filter Rods</td><td className="py-4 text-emerald-400">x{CONVERSIONS.RODS}</td><td>Standard 1:6 rod-to-stick ratio.</td></tr>
-                    </tbody>
+<tbody className="divide-y divide-slate-800">
+  <tr><td className="py-4 font-black">Tobacco Leaf</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOBACCO}</td><td>{CONVERSIONS.TOBACCO} sticks per 1kg of leaf.</td></tr>
+  <tr><td className="py-4 font-black">Acetate Tow</td><td className="py-4 text-emerald-400">x{CONVERSIONS.TOW}</td><td>{CONVERSIONS.TOW} sticks per 1kg of tow.</td></tr>
+  <tr><td className="py-4 font-black">Cig. Paper</td><td className="py-4 text-emerald-400">x{CONVERSIONS.PAPER}</td><td>20k sticks per 1kg of paper rolls.</td></tr>
+  <tr><td className="py-4 font-black">Filter Rods</td><td className="py-4 text-emerald-400">x{CONVERSIONS.RODS}</td><td>Standard 1:6 rod-to-stick ratio.</td></tr>
+  {/* NEW CIGARETTE CONSTANTS */}
+  <tr className="bg-emerald-900/10">
+    <td className="py-4 font-black text-emerald-400">Cigarettes (MIL)</td>
+    <td className="py-4 text-emerald-400">x1,000,000</td>
+    <td>Standard "Mille" unit (1,000 sticks per unit, 1,000 units per MIL).</td>
+  </tr>
+  <tr className="bg-emerald-900/10">
+    <td className="py-4 font-black text-emerald-400">Cigarettes (KG)</td>
+    <td className="py-4 text-emerald-400">x{CONVERSIONS.CIGARETTES_EXPORT}</td>
+    <td>Weight-to-Stick conversion (Approx. 1g per stick including packaging).</td>
+  </tr>
+</tbody>
                   </table>
                 </div>
               </div>
