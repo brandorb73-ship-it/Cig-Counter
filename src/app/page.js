@@ -549,20 +549,28 @@ export default function ObsidianPrimeV12Final() {
                    <button onClick={() => setActiveTab('country')} className="w-full bg-slate-900 py-3 rounded-xl text-white font-black text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all">Reload Analysis</button>
                 </div>
               ))}
-              {reports.length === 0 && <div className="col-span-full py-20 text-center bg-slate-100 border-2 border-dashed rounded-[2.5rem] text-slate-400 uppercase font-black text-xs tracking-widest">No Snapshots Found</div>}
+            {reports.length === 0 && (
+                <div className="col-span-full py-20 text-center bg-slate-100 border-2 border-dashed rounded-[2.5rem] text-slate-400 uppercase font-black text-xs tracking-widest">
+                  No Snapshots Found
+                </div>
+              )}
             </div>
           )}
         </div>
-)}
-        </div>
- )}
-{activeTab === 5 && (
+      )}
+
+      {/* TAB 5: FORENSIC MONITOR */}
+      {activeTab === 5 && (
         <div className="mt-8 animate-in fade-in duration-500">
           <ForensicMonitor />
         </div>
       )}
+
+    </div> // Closes the main container div
   );
-}
+} // Closes the Page function
+
+// HELPER FUNCTIONS (KEEP OUTSIDE PAGE FUNCTION)
 function SummaryBox({ title, val, sub, color, isText }) {
     return (
         <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm hover:border-blue-100 transition-all">
