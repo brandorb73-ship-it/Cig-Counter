@@ -1,4 +1,5 @@
 "use client";
+import ForensicMonitor from './ForensicMonitor'; // Make sure the path matches where you saved the file
 import React, { useState, useEffect, useMemo } from 'react';
 import Papa from 'papaparse';
 import { 
@@ -216,7 +217,13 @@ export default function ObsidianPrimeV12Final() {
               <button onClick={() => setActiveTab('entities')} className={`pb-4 transition-all ${activeTab === 'entities' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Target Analytics</button>
               <button onClick={() => setActiveTab('reports')} className={`pb-4 transition-all ${activeTab === 'reports' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Archives</button>
             <button onClick={() => setActiveTab('guide')} className={`pb-4 transition-all ${activeTab === 'guide' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Audit Guide</button>
-        </div>
+        <button 
+    onClick={() => setActiveTab(5)}
+    className={`px-4 py-2 ${activeTab === 5 ? 'border-b-2 border-blue-600' : ''}`}
+  >
+    Forensic Monitor
+  </button>
+</div>
             <div className="flex gap-3 pb-4">
               <input className="bg-white border-2 border-slate-200 rounded-xl px-4 py-1.5 text-xs font-black outline-none" placeholder="Snapshot Name..." value={reportTitle} onChange={e => setReportTitle(e.target.value)} />
               <button onClick={saveReport} className="bg-emerald-700 text-white px-6 py-2 rounded-xl text-[11px] font-black uppercase flex items-center gap-2"><Save size={16}/> Save</button>
@@ -550,7 +557,15 @@ export default function ObsidianPrimeV12Final() {
     </div>
   );
 }
+{activeTab === 5 && (
+        <div className="mt-8 animate-in fade-in duration-500">
+           <ForensicMonitor />
+        </div>
+      )}
 
+    </div> // This is the main container closing div
+  );
+} // This is the main Page function closing brace
 function SummaryBox({ title, val, sub, color, isText }) {
     return (
         <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm hover:border-blue-100 transition-all">
