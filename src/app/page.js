@@ -556,16 +556,14 @@ export default function ObsidianPrimeV12Final() {
 )}
         </div>
  )}
-
-      {activeTab === 5 && (
+{activeTab === 5 && (
         <div className="mt-8 animate-in fade-in duration-500">
-           <ForensicMonitor />
+          <ForensicMonitor />
         </div>
       )}
-    </div> 
+    </div>
   );
 }
-} // This is the main Page function closing brace
 function SummaryBox({ title, val, sub, color, isText }) {
     return (
         <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm hover:border-blue-100 transition-all">
