@@ -218,11 +218,11 @@ export default function ObsidianPrimeV12Final() {
               <button onClick={() => setActiveTab('reports')} className={`pb-4 transition-all ${activeTab === 'reports' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Archives</button>
             <button onClick={() => setActiveTab('guide')} className={`pb-4 transition-all ${activeTab === 'guide' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}>Audit Guide</button>
         <button 
-    onClick={() => setActiveTab(5)}
-    className={`px-4 py-2 ${activeTab === 5 ? 'border-b-2 border-blue-600' : ''}`}
-  >
-    Forensic Monitor
-  </button>
+  onClick={() => setActiveTab('forensic')} 
+  className={`pb-4 transition-all ${activeTab === 'forensic' ? 'text-blue-700 border-b-4 border-blue-700' : 'text-slate-400'}`}
+>
+  Forensic Monitor
+</button>
 </div>
             <div className="flex gap-3 pb-4">
               <input className="bg-white border-2 border-slate-200 rounded-xl px-4 py-1.5 text-xs font-black outline-none" placeholder="Snapshot Name..." value={reportTitle} onChange={e => setReportTitle(e.target.value)} />
