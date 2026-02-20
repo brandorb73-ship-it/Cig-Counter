@@ -553,18 +553,19 @@ export default function ObsidianPrimeV12Final() {
             </div>
           )}
         </div>
+)}
+        </div>
       )}
-    </div>
-  );
-}
-{activeTab === 5 && (
+{/* TAB 5 ADDED INSIDE THE MAIN WRAPPER */}
+      {activeTab === 5 && (
         <div className="mt-8 animate-in fade-in duration-500">
-           <ForensicMonitor />
+          <ForensicMonitor />
         </div>
       )}
 
-    </div> // This is the main container closing div
+    </div> // This is the ONLY main container closing div
   );
+}
 } // This is the main Page function closing brace
 function SummaryBox({ title, val, sub, color, isText }) {
     return (
