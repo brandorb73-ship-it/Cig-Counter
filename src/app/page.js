@@ -560,11 +560,20 @@ export default function ObsidianPrimeV12Final() {
       )}
 
       {/* TAB 5: FORENSIC MONITOR */}
-      {activeTab === 5 && (
-        <div className="mt-8 animate-in fade-in duration-500">
-          <ForensicMonitor />
-        </div>
-      )}
+{/* Only show the standard loader if NOT on the Forensic tab */}
+{activeTab !== 'forensic' && (
+  <div className="bg-white p-6 rounded-3xl border-2 border-slate-100 mb-8">
+     {/* Your existing Google Sheet URL input and Sync button code here */}
+  </div>
+)}
+
+{/* ... other tab logic ... */}
+
+{activeTab === 'forensic' && (
+  <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
+    <ForensicMonitor />
+  </div>
+)}
 
     </div> // Closes the main container div
   );
