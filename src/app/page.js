@@ -555,15 +555,14 @@ export default function ObsidianPrimeV12Final() {
         </div>
 )}
         </div>
-      )}
-{/* TAB 5 ADDED INSIDE THE MAIN WRAPPER */}
+ )}
+
       {activeTab === 5 && (
         <div className="mt-8 animate-in fade-in duration-500">
-          <ForensicMonitor />
+           <ForensicMonitor />
         </div>
       )}
-
-    </div> // This is the ONLY main container closing div
+    </div> 
   );
 }
 } // This is the main Page function closing brace
