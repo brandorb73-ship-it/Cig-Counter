@@ -561,7 +561,6 @@ export default function ObsidianPrimeV12Final() {
           <ForensicMonitor />
         </div>
       )}
-    </div>
   );
 }
 function SummaryBox({ title, val, sub, color, isText }) {
