@@ -4,7 +4,18 @@ import React, { useState, useMemo } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
-import { ShieldAlert, Globe, Activity, Zap, Link, Calculator } from 'lucide-react';
+import { 
+  ShieldAlert, 
+  Globe, 
+  Activity, 
+  Zap, 
+  Link, 
+  Calculator, 
+  TrendingUp, 
+  BarChart3, 
+  DollarSign, 
+  Layers 
+} from 'lucide-react';
 
 const ForensicMonitor = () => {
   const [data, setData] = useState([]);
