@@ -53,32 +53,36 @@ const ForensicMonitor = () => {
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/_/g, ''));
     console.log("Detected Headers:", headers);
 
-    const formatted = lines.slice(1).map(row => {
-      const cols = row.split(',');
-      const entry = {};
-      headers.forEach((header, index) => {
-        entry[header] = cols[index]?.trim();
-      });
+const formatted = lines.slice(1).map(row => {
+  const cols = row.split(',');
+  const entry = {};
+  
+  // Map every column to its index-based header
+  headers.forEach((header, index) => {
+    entry[header] = cols[index]?.trim();
+  });
 
-      // 2. Map using the cleaned header names
-      // Example: 'tobacco_val' becomes 'tobaccoval'
-      const tVal = parseFloat(entry['tobaccoval']?.replace(/[$,]/g, '')) || 0;
-      const tUnit = entry['tobaccounit']?.toLowerCase() || 'kg';
-      const towVal = parseFloat(entry['towval']?.replace(/[$,]/g, '')) || 0;
-      const towUnit = entry['towunit']?.toLowerCase() || 'kg';
-      const flow = parseFloat(entry['outflowsticks']?.replace(/[$,]/g, '')) || 0;
+  // FUZZY LOOKUP: Find the value even if the header has hidden characters
+  const getVal = (search) => {
+    const key = headers.find(h => h.includes(search.toLowerCase()));
+    return entry[key];
+  };
 
-      return {
-        entity: entry['entity'],
-        month: entry['month'],
-        tobaccoVal: tVal,
-        tobaccoUnit: tUnit,
-        towVal: towVal,
-        towUnit: towUnit,
-        outflow: flow,
-        dest: entry['destcountry']
-      };
-    }).filter(r => r.entity);
+  const tVal = parseFloat(getVal('tobacco_val')?.replace(/[$,]/g, '')) || 0;
+  const flow = parseFloat(getVal('outflow_sticks')?.replace(/[$,]/g, '')) || 0;
+
+  return {
+    // This looks for any column containing 'entity'
+    entity: getVal('entity') || "Unknown", 
+    month: getVal('month'),
+    tobaccoVal: tVal,
+    tobaccoUnit: getVal('tobacco_unit')?.toLowerCase() || 'kg',
+    towVal: parseFloat(getVal('tow_val')?.replace(/[$,]/g, '')) || 0,
+    towUnit: getVal('tow_unit')?.toLowerCase() || 'kg',
+    outflow: flow,
+    dest: getVal('dest_country')
+  };
+}).filter(r => r.tobaccoVal > 0 || r.outflow > 0); // Only keep rows with actual numbers
 
     console.log("First Row of Processed Data:", formatted[0]);
     setData(formatted);
