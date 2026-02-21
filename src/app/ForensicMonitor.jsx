@@ -43,77 +43,64 @@ const ForensicMonitor = () => {
     paper: 40000     // 40k sticks per unit
   };
 
-  const fetchSheetData = async () => {
-    if (!sheetUrl) return;
-    setLoading(true);
-    try {
-      // Automatically convert standard Google Sheet URL to CSV export link
-      let csvUrl = sheetUrl.includes('/edit') 
-        ? sheetUrl.replace(/\/edit.*$/, '/export?format=csv') 
-        : sheetUrl;
-        
-      const response = await fetch(csvUrl);
-      if (!response.ok) throw new Error("Network response was not ok");
-      const text = await response.text();
+ const fetchSheetData = async () => {
+  try {
+    const response = await fetch(sheetUrl);
+    const csvText = await response.text();
+    const lines = csvText.split('\n');
+    
+    // 1. Capture the headers from the first row and clean them
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    
+    const formatted = lines.slice(1).map(row => {
+      const cols = row.split(',');
+      const entry = {};
       
-      const rows = text.split('\n').slice(1);
-const formatted = rows.map(row => {
-  const cols = row.split(',');
-  return {
-    entity: cols[0]?.trim(),        // Entity
-    month: cols[1]?.trim(),         // Month
-    year: cols[2]?.trim(),          // Year
-    tobaccoVal: parseFloat(cols[3]) || 0,   // Tobacco_Val
-    tobaccoUnit: cols[4]?.trim() || 'kg',   // Tobacco_Unit
-    towVal: parseFloat(cols[6]) || 0,       // Tow_Val
-    towUnit: cols[7]?.trim() || 'kg',       // Tow_Unit
-    // Count carefully here:
-    // 9: Paper_Value, 10: Paper_Unit, 11: Paper_Origin
-    // 12: Filter Rods_Value, 13: Filter Rods_Unit, 14: Filter Rods_Origin
-    // 15: Outflow_Sticks
-    outflow: parseFloat(cols[15]) || 0, 
-    dest: cols[16]?.trim()
-  };
-}).filter(r => r.entity && r.entity.toLowerCase() !== "entity");
-      
-      setData(formatted);
-    } catch (e) {
-      console.error(e);
+      // 2. Map values to header names
+      headers.forEach((header, index) => {
+        entry[header] = cols[index]?.trim();
+      });
+
+      // 3. Simplified Mapping for the Logic Engine
+      return {
+        entity: entry['entity'],
+        month: entry['month'],
+        tobaccoVal: parseFloat(entry['tobacco_val']) || 0,
+        tobaccoUnit: entry['tobacco_unit']?.toLowerCase() || 'kg',
+        towVal: parseFloat(entry['tow_val']) || 0,
+        towUnit: entry['tow_unit']?.toLowerCase() || 'kg',
+        outflow: parseFloat(entry['outflow_sticks']) || 0,
+        dest: entry['dest_country']
+      };
+    }).filter(r => r.entity);
+
+    setData(formatted);
+  } catch (error) {
+    console.error("Data Sync Failed:", error);
       alert("SYNC ERROR: Ensure the Google Sheet is 'Published to the Web' as a CSV.");
     } finally {
       setLoading(false);
     }
   };
 
- const processedData = useMemo(() => {
-  const unitToKG = { 
-    'kg': 1, 'kgm': 1, 'ton': 1000, 'mt': 1000, 
-    'lb': 0.4535, 'lbs': 0.4535, 'pounds': 0.4535 
-  };
-
-  let cumulativePrecursorKG = 0;
-  let cumulativeSticksOut = 0;
+const processedData = useMemo(() => {
+  const unitToKG = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
   let theoreticalPool = 0;
+  let cumulativeSticksOut = 0;
 
   return data.map((item) => {
-    // 1. UNIT NORMALIZATION
-    const normTobacco = item.tobaccoVal * (unitToKG[item.tobaccoUnit.toLowerCase()] || 1);
-    const normTow = item.towVal * (unitToKG[item.towUnit.toLowerCase()] || 1);
-
-    // 2. CAPACITY & YIELD (The "Ghost Capacity" Buffer)
-    const wasteFactor = (100 - wastage) / 100;
-    const yieldTobacco = (normTobacco * wasteFactor) / 0.0007; // 0.7g/stick
-    const yieldTow = (normTow * wasteFactor) * 20000;         // 20k sticks/kg tow
+    // Normalizing based on our simplified names
+    const normTobacco = item.tobaccoVal * (unitToKG[item.tobaccoUnit] || 1);
+    const normTow = item.towVal * (unitToKG[item.towUnit] || 1);
     
-    // Bottleneck logic: You can't make more than your scarcest material allows
+    const wasteFactor = (100 - wastage) / 100;
+    const yieldTobacco = (normTobacco * wasteFactor) / 0.0007;
+    const yieldTow = (normTow * wasteFactor) * 20000;
+    
     const theoreticalMax = Math.min(yieldTobacco, yieldTow);
     
-    // 3. THE SMOKING GUN: CUMULATIVE ANALYSIS
     theoreticalPool += theoreticalMax;
     cumulativeSticksOut += item.outflow;
-
-    // 4. BENFORD'S LAW PREP
-    const firstDigit = parseInt(item.outflow.toString()[0]) || 0;
 
     return {
       ...item,
@@ -121,15 +108,12 @@ const formatted = rows.map(row => {
       theoreticalMax,
       cumulativeInput: theoreticalPool,
       cumulativeOutput: cumulativeSticksOut,
-      // If result is positive, they are exporting more than they could have possibly made
-      smokingGunGap: cumulativeSticksOut - theoreticalPool,
-      firstDigit,
-      // Price-Mass Check (Value Correlation)
+      // First digit for Benford
+      firstDigit: parseInt(item.outflow.toString()[0]) || 0,
       priceIndex: normTobacco > 0 ? (item.outflow / normTobacco) : 0
     };
   });
 }, [data, wastage]);
-
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
     if (processedData.length === 0) return [];
