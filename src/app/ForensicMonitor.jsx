@@ -93,6 +93,28 @@ const ForensicMonitor = () => {
   let cumulativeSticksOut = 0;
   let theoreticalPool = 0;
 
+   // --- BENFORD'S LAW CALCULATION ---
+  const benfordAnalysis = useMemo(() => {
+    if (processedData.length === 0) return [];
+    
+    const counts = Array(9).fill(0);
+    processedData.forEach(d => {
+      // We look at the first digit of the Outflow_Sticks
+      const firstDigit = parseInt(d.outflow?.toString()[0]);
+      if (firstDigit > 0 && firstDigit <= 9) {
+        counts[firstDigit - 1]++;
+      }
+    });
+
+    const total = counts.reduce((a, b) => a + b, 0);
+    const idealBenford = [30.1, 17.6, 12.5, 9.7, 7.9, 6.7, 5.8, 5.1, 4.6];
+
+    return counts.map((c, i) => ({
+      digit: i + 1,
+      actual: total > 0 ? (c / total) * 100 : 0,
+      ideal: idealBenford[i]
+    }));
+  }, [processedData]);
   return data.map((item) => {
     // 1. UNIT NORMALIZATION
     const normTobacco = item.tobaccoVal * (unitToKG[item.tobaccoUnit.toLowerCase()] || 1);
