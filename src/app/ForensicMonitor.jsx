@@ -57,22 +57,24 @@ const ForensicMonitor = () => {
       const text = await response.text();
       
       const rows = text.split('\n').slice(1);
-   const formatted = rows.map(row => {
+const formatted = rows.map(row => {
   const cols = row.split(',');
   return {
-    entity: cols[0]?.trim(),
-    month: cols[1]?.trim(),
-    year: cols[2]?.trim(),
-    tobaccoVal: parseFloat(cols[3]) || 0,
-    tobaccoUnit: cols[4]?.trim() || 'kg',
-    towVal: parseFloat(cols[6]) || 0,
-    towUnit: cols[7]?.trim() || 'kg',
-    paperVal: parseFloat(cols[9]) || 0,
-    rodsVal: parseFloat(cols[12]) || 0,
-    outflow: parseFloat(cols[15]) || 0, // Outflow_Sticks
+    entity: cols[0]?.trim(),        // Entity
+    month: cols[1]?.trim(),         // Month
+    year: cols[2]?.trim(),          // Year
+    tobaccoVal: parseFloat(cols[3]) || 0,   // Tobacco_Val
+    tobaccoUnit: cols[4]?.trim() || 'kg',   // Tobacco_Unit
+    towVal: parseFloat(cols[6]) || 0,       // Tow_Val
+    towUnit: cols[7]?.trim() || 'kg',       // Tow_Unit
+    // Count carefully here:
+    // 9: Paper_Value, 10: Paper_Unit, 11: Paper_Origin
+    // 12: Filter Rods_Value, 13: Filter Rods_Unit, 14: Filter Rods_Origin
+    // 15: Outflow_Sticks
+    outflow: parseFloat(cols[15]) || 0, 
     dest: cols[16]?.trim()
   };
-}).filter(r => r.entity && r.entity !== "Entity");
+}).filter(r => r.entity && r.entity.toLowerCase() !== "entity");
       
       setData(formatted);
     } catch (e) {
