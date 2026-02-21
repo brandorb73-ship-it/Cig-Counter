@@ -165,11 +165,43 @@ const ForensicMonitor = () => {
          </div>
       </div>
 
-      {/* ... METRICS ROW ENDS HERE ... */}
-      </div>
+<div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+  {/* Benford's Law: Detection of Fabricated Numbers */}
+  <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem]">
+    <h3 className="text-[11px] font-black uppercase tracking-widest mb-6 flex items-center gap-2">
+      <BarChart3 size={16} className="text-blue-600" /> Benford's Law (Integrity Audit)
+    </h3>
+    <div className="h-[250px]">
+      <ResponsiveContainer>
+        <BarChart data={benfordAnalysis}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="digit" />
+          <YAxis hide />
+          <Tooltip />
+          <Bar dataKey="actual" fill="#2563eb" radius={[4, 4, 0, 0]} />
+          <Line type="monotone" dataKey="ideal" stroke="#94a3b8" strokeDasharray="5 5" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
 
-      {/* --- REPLACING TREND ANALYSIS WITH MACRO-FORENSIC SUITE --- */}
-      <div className="space-y-8 mt-8">
+  {/* Price-Mass Correlation: Under-Invoicing Check */}
+  <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem]">
+    <h3 className="text-[11px] font-black uppercase tracking-widest mb-6 flex items-center gap-2">
+      <DollarSign size={16} className="text-emerald-600" /> Value-Mass Correlation
+    </h3>
+    <div className="h-[250px]">
+      <ResponsiveContainer>
+        <ScatterChart>
+          <XAxis type="number" dataKey="normTobacco" name="Weight" unit="kg" fontSize={10} />
+          <YAxis type="number" dataKey="priceMassIndex" name="Value Consistency" fontSize={10} />
+          <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+          <Scatter data={processedData} fill="#10b981" />
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  </div>
+</div>
         
         {/* 1. THE SMOKING GUN: CUMULATIVE MASS-BALANCE */}
         <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
