@@ -33,22 +33,22 @@ const ForensicMonitor = () => {
       const text = await response.text();
       
       const rows = text.split('\n').slice(1);
-      const formatted = rows.map(row => {
-        const cols = row.split(',');
-        return {
-          entity: cols[0]?.trim(),
-          month: cols[1]?.trim(),
-          tobaccoVal: parseFloat(cols[2]) || 0,
-          tobaccoUnit: cols[3]?.toLowerCase().trim() || 'kg',
-          towVal: parseFloat(cols[4]) || 0,
-          towUnit: cols[5]?.toLowerCase().trim() || 'kg',
-          rodVal: parseFloat(cols[6]) || 0,
-          paperVal: parseFloat(cols[7]) || 0,
-          outflow: parseFloat(cols[8]) || 0,
-          origin: cols[9]?.trim() || 'Unknown',
-          dest: cols[10]?.trim() || 'Unknown'
-        };
-      }).filter(r => r.entity);
+   const formatted = rows.map(row => {
+  const cols = row.split(',');
+  return {
+    entity: cols[0]?.trim(),
+    month: cols[1]?.trim(),
+    year: cols[2]?.trim(),
+    tobaccoVal: parseFloat(cols[3]) || 0,
+    tobaccoUnit: cols[4]?.trim() || 'kg',
+    towVal: parseFloat(cols[6]) || 0,
+    towUnit: cols[7]?.trim() || 'kg',
+    paperVal: parseFloat(cols[9]) || 0,
+    rodsVal: parseFloat(cols[12]) || 0,
+    outflow: parseFloat(cols[15]) || 0, // Outflow_Sticks
+    dest: cols[16]?.trim()
+  };
+}).filter(r => r.entity && r.entity !== "Entity");
       
       setData(formatted);
     } catch (e) {
@@ -59,20 +59,51 @@ const ForensicMonitor = () => {
     }
   };
 
-  const processedData = useMemo(() => {
-    const wasteFactor = (100 - wastage) / 100;
-    return data.map(item => {
-      const capTobacco = (item.tobaccoVal * wasteFactor) / yieldConstants.tobacco;
-      const capTow = (item.towVal * wasteFactor) * yieldConstants.tow;
-      
-      // The ceiling is the lower of the two critical precursors
-      const theoreticalMax = Math.min(capTobacco, capTow);
-      const gap = item.outflow > theoreticalMax ? item.outflow - theoreticalMax : 0;
-      
-      return { ...item, theoreticalMax, gap };
-    });
-  }, [data, wastage]);
+ const processedData = useMemo(() => {
+  const unitToKG = { 
+    'kg': 1, 'kgm': 1, 'ton': 1000, 'mt': 1000, 
+    'lb': 0.4535, 'lbs': 0.4535, 'pounds': 0.4535 
+  };
 
+  let cumulativePrecursorKG = 0;
+  let cumulativeSticksOut = 0;
+  let theoreticalPool = 0;
+
+  return data.map((item) => {
+    // 1. UNIT NORMALIZATION
+    const normTobacco = item.tobaccoVal * (unitToKG[item.tobaccoUnit.toLowerCase()] || 1);
+    const normTow = item.towVal * (unitToKG[item.towUnit.toLowerCase()] || 1);
+
+    // 2. CAPACITY & YIELD (The "Ghost Capacity" Buffer)
+    const wasteFactor = (100 - wastage) / 100;
+    const yieldTobacco = (normTobacco * wasteFactor) / 0.0007; // 0.7g/stick
+    const yieldTow = (normTow * wasteFactor) * 20000;         // 20k sticks/kg tow
+    
+    // Bottleneck logic: You can't make more than your scarcest material allows
+    const theoreticalMax = Math.min(yieldTobacco, yieldTow);
+    
+    // 3. THE SMOKING GUN: CUMULATIVE ANALYSIS
+    theoreticalPool += theoreticalMax;
+    cumulativeSticksOut += item.outflow;
+
+    // 4. BENFORD'S LAW PREP
+    const firstDigit = parseInt(item.outflow.toString()[0]) || 0;
+
+    return {
+      ...item,
+      normTobacco,
+      theoreticalMax,
+      cumulativeInput: theoreticalPool,
+      cumulativeOutput: cumulativeSticksOut,
+      // If result is positive, they are exporting more than they could have possibly made
+      smokingGunGap: cumulativeSticksOut - theoreticalPool,
+      firstDigit,
+      // Price-Mass Check (Value Correlation)
+      priceIndex: normTobacco > 0 ? (item.outflow / normTobacco) : 0
+    };
+  });
+}, [data, wastage]);
+  
   const totalGap = processedData.reduce((acc, curr) => acc + curr.gap, 0);
 
   return (
@@ -134,40 +165,74 @@ const ForensicMonitor = () => {
          </div>
       </div>
 
-      {/* TREND ANALYSIS CHART */}
-      <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
-        <h3 className="text-[11px] font-black uppercase tracking-[0.3em] mb-8 text-slate-800 flex items-center gap-2">
-          <Zap size={14} className="text-emerald-500" /> Mass-Balance Bottleneck Trend
-        </h3>
-        <div className="h-[350px] w-full">
-          <ResponsiveContainer>
-            <AreaChart data={processedData}>
-              <defs>
-                <linearGradient id="colorMax" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="month" stroke="#94a3b8" fontSize={10} fontStyle="bold" axisLine={false} tickLine={false} />
-              <YAxis stroke="#94a3b8" fontSize={10} axisLine={false} tickLine={false} />
-              <Tooltip 
-                contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: '900'}} 
-              />
-              <Area 
-                name="Production Ceiling" type="monotone" dataKey="theoreticalMax" 
-                stroke="#10b981" strokeWidth={3} fill="url(#colorMax)" 
-              />
-              <Area 
-                name="Actual Exports" type="monotone" dataKey="outflow" 
-                stroke="#ef4444" strokeWidth={2} fill="#fee2e2" fillOpacity={0.2} strokeDasharray="5 5" 
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+      {/* ... METRICS ROW ENDS HERE ... */}
+      </div>
+
+      {/* --- REPLACING TREND ANALYSIS WITH MACRO-FORENSIC SUITE --- */}
+      <div className="space-y-8 mt-8">
+        
+        {/* 1. THE SMOKING GUN: CUMULATIVE MASS-BALANCE */}
+        <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
+          <div className="mb-8">
+            <h3 className="text-emerald-400 font-black text-[11px] uppercase tracking-[0.3em] flex items-center gap-2">
+              <TrendingUp size={14} /> Cumulative Precursor Burn (The Smoking Gun)
+            </h3>
+            <p className="text-slate-500 text-[10px] mt-2 font-bold uppercase tracking-widest">
+              Detects "Off-Book" production by tracking the total material pool vs total output.
+            </p>
+          </div>
+          <div className="h-[350px] w-full">
+            <ResponsiveContainer>
+              <ComposedChart data={processedData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                <XAxis dataKey="month" stroke="#475569" fontSize={10} fontStyle="bold" />
+                <YAxis stroke="#475569" fontSize={10} fontStyle="bold" />
+                <Tooltip 
+                  contentStyle={{backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '10px'}} 
+                  itemStyle={{fontWeight: '900'}}
+                />
+                <Area name="Theoretical Pool" dataKey="cumulativeInput" fill="#10b981" stroke="#10b981" fillOpacity={0.1} />
+                <Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={4} dot={{r: 4, fill: '#ef4444'}} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* 2. BENFORD'S LAW */}
+          <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
+            <h3 className="text-slate-800 font-black text-[11px] uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
+              <BarChart3 size={16} className="text-blue-600" /> Benford's Law (Integrity Audit)
+            </h3>
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer>
+                <BarChart data={benfordAnalysis}>
+                  <XAxis dataKey="digit" fontSize={10} />
+                  <Tooltip />
+                  <Bar dataKey="actual" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Actual %" />
+                  <Line type="step" dataKey="ideal" stroke="#94a3b8" strokeDasharray="5 5" name="Expected" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* 3. PRICE-MASS SCATTER */}
+          <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
+            <h3 className="text-slate-800 font-black text-[11px] uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
+              <DollarSign size={16} className="text-emerald-600" /> Value-Mass Correlation
+            </h3>
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer>
+                <ScatterChart>
+                  <XAxis type="number" dataKey="normTobacco" name="Tobacco KG" unit="kg" fontSize={10} />
+                  <YAxis type="number" dataKey="priceIndex" name="Value/KG" fontSize={10} />
+                  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                  <Scatter name="Shipments" data={processedData} fill="#10b981" />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
 
 export default ForensicMonitor; // THIS LINE IS CRITICAL
