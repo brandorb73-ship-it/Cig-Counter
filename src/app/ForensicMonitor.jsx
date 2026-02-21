@@ -220,8 +220,19 @@ const processedData = useMemo(() => {
                   contentStyle={{backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '10px'}} 
                   itemStyle={{fontWeight: '900'}}
                 />
-                <Area name="Theoretical Pool" dataKey="cumulativeInput" fill="#10b981" stroke="#10b981" fillOpacity={0.1} />
-                <Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={4} dot={{r: 4, fill: '#ef4444'}} />
+<Area 
+  name="Theoretical Pool" 
+  dataKey="cumulativeInput"  /* MUST MATCH processedData return */
+  fill="#10b981" 
+  stroke="#10b981" 
+  fillOpacity={0.1} 
+/>
+<Line 
+  name="Actual Exports" 
+  dataKey="cumulativeOutput" /* MUST MATCH processedData return */
+  stroke="#ef4444" 
+  strokeWidth={4} 
+/>
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -235,12 +246,11 @@ const processedData = useMemo(() => {
             </h3>
             <div className="h-[250px] w-full">
               <ResponsiveContainer>
-                <BarChart data={benfordAnalysis}>
-                  <XAxis dataKey="digit" fontSize={10} />
-                  <Tooltip />
-                  <Bar dataKey="actual" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Actual %" />
-                  <Line type="step" dataKey="ideal" stroke="#94a3b8" strokeDasharray="5 5" name="Expected" />
-                </BarChart>
+              <BarChart data={benfordAnalysis}>
+  <XAxis dataKey="digit" /> 
+  <Bar dataKey="actual" fill="#3b82f6" name="Actual %" />
+  <Line type="step" dataKey="ideal" stroke="#94a3b8" name="Expected %" />
+</BarChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -252,12 +262,11 @@ const processedData = useMemo(() => {
             </h3>
             <div className="h-[250px] w-full">
               <ResponsiveContainer>
-                <ScatterChart>
-                  <XAxis type="number" dataKey="normTobacco" name="Tobacco KG" unit="kg" fontSize={10} />
-                  <YAxis type="number" dataKey="priceIndex" name="Value/KG" fontSize={10} />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                  <Scatter name="Shipments" data={processedData} fill="#10b981" />
-                </ScatterChart>
+<ScatterChart>
+  <XAxis type="number" dataKey="normTobacco" name="Tobacco KG" />
+  <YAxis type="number" dataKey="priceIndex" name="Sticks per KG" />
+  <Scatter name="Shipments" data={processedData} fill="#10b981" />
+</ScatterChart>
               </ResponsiveContainer>
             </div>
           </div>
