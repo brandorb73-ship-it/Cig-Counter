@@ -47,41 +47,45 @@ const ForensicMonitor = () => {
   try {
     const response = await fetch(sheetUrl);
     const csvText = await response.text();
-    const lines = csvText.split('\n');
+    const lines = csvText.split('\n').filter(line => line.trim() !== "");
     
-    // 1. Capture the headers from the first row and clean them
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    
+    // 1. Get headers and clean them (remove spaces/underscores)
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/_/g, ''));
+    console.log("Detected Headers:", headers);
+
     const formatted = lines.slice(1).map(row => {
       const cols = row.split(',');
       const entry = {};
-      
-      // 2. Map values to header names
       headers.forEach((header, index) => {
         entry[header] = cols[index]?.trim();
       });
 
-      // 3. Simplified Mapping for the Logic Engine
+      // 2. Map using the cleaned header names
+      // Example: 'tobacco_val' becomes 'tobaccoval'
+      const tVal = parseFloat(entry['tobaccoval']?.replace(/[$,]/g, '')) || 0;
+      const tUnit = entry['tobaccounit']?.toLowerCase() || 'kg';
+      const towVal = parseFloat(entry['towval']?.replace(/[$,]/g, '')) || 0;
+      const towUnit = entry['towunit']?.toLowerCase() || 'kg';
+      const flow = parseFloat(entry['outflowsticks']?.replace(/[$,]/g, '')) || 0;
+
       return {
         entity: entry['entity'],
         month: entry['month'],
-        tobaccoVal: parseFloat(entry['tobacco_val']) || 0,
-        tobaccoUnit: entry['tobacco_unit']?.toLowerCase() || 'kg',
-        towVal: parseFloat(entry['tow_val']) || 0,
-        towUnit: entry['tow_unit']?.toLowerCase() || 'kg',
-        outflow: parseFloat(entry['outflow_sticks']) || 0,
-        dest: entry['dest_country']
+        tobaccoVal: tVal,
+        tobaccoUnit: tUnit,
+        towVal: towVal,
+        towUnit: towUnit,
+        outflow: flow,
+        dest: entry['destcountry']
       };
     }).filter(r => r.entity);
 
+    console.log("First Row of Processed Data:", formatted[0]);
     setData(formatted);
   } catch (error) {
     console.error("Data Sync Failed:", error);
-      alert("SYNC ERROR: Ensure the Google Sheet is 'Published to the Web' as a CSV.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }
+};
 
 const processedData = useMemo(() => {
   const unitToKG = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
