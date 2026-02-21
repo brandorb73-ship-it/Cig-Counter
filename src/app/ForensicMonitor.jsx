@@ -2,7 +2,20 @@
 
 import React, { useState, useMemo } from 'react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area 
+  ComposedChart, 
+  Line, 
+  Bar, 
+  BarChart,
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer, 
+  Area, 
+  ScatterChart, 
+  Scatter, 
+  ZAxis 
 } from 'recharts';
 import { 
   ShieldAlert, 
