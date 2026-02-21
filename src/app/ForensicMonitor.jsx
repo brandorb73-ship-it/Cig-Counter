@@ -47,48 +47,30 @@ const ForensicMonitor = () => {
   try {
     const response = await fetch(sheetUrl);
     const csvText = await response.text();
-    const lines = csvText.split('\n').filter(line => line.trim() !== "");
-    
-    // 1. Get headers and clean them (remove spaces/underscores)
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/_/g, ''));
-    console.log("Detected Headers:", headers);
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
 
-const formatted = lines.slice(1).map(row => {
-  const cols = row.split(',');
-  const entry = {};
-  
-  // Map every column to its index-based header
-  headers.forEach((header, index) => {
-    entry[header] = cols[index]?.trim();
-  });
+    const formatted = lines.slice(1).map(row => {
+      const cols = row.split(',').map(c => c.trim());
+      const entry = {};
+      headers.forEach((h, i) => entry[h] = cols[i]);
 
-  // FUZZY LOOKUP: Find the value even if the header has hidden characters
-  const getVal = (search) => {
-    const key = headers.find(h => h.includes(search.toLowerCase()));
-    return entry[key];
-  };
+      const num = (v) => parseFloat(v?.replace(/[$,]/g, '')) || 0;
 
-  const tVal = parseFloat(getVal('tobacco_val')?.replace(/[$,]/g, '')) || 0;
-  const flow = parseFloat(getVal('outflow_sticks')?.replace(/[$,]/g, '')) || 0;
+      return {
+        entity: entry.entity,
+        month: entry.month,
+        t_val: num(entry.t_val), t_unit: entry.t_unit,
+        tow_val: num(entry.tow_val), tow_unit: entry.tow_unit,
+        p_val: num(entry.p_val),
+        f_val: num(entry.f_val),
+        outflow: num(entry.outflow),
+        dest: entry.dest
+      };
+    }).filter(r => r.entity);
 
-  return {
-    // This looks for any column containing 'entity'
-    entity: getVal('entity') || "Unknown", 
-    month: getVal('month'),
-    tobaccoVal: tVal,
-    tobaccoUnit: getVal('tobacco_unit')?.toLowerCase() || 'kg',
-    towVal: parseFloat(getVal('tow_val')?.replace(/[$,]/g, '')) || 0,
-    towUnit: getVal('tow_unit')?.toLowerCase() || 'kg',
-    outflow: flow,
-    dest: getVal('dest_country')
-  };
-}).filter(r => r.tobaccoVal > 0 || r.outflow > 0); // Only keep rows with actual numbers
-
-    console.log("First Row of Processed Data:", formatted[0]);
     setData(formatted);
-  } catch (error) {
-    console.error("Data Sync Failed:", error);
-  }
+  } catch (e) { console.error("Sync Error:", e); }
 };
 
 const processedData = useMemo(() => {
@@ -97,31 +79,39 @@ const processedData = useMemo(() => {
   let cumulativeSticksOut = 0;
 
   return data.map((item) => {
-    // Normalizing based on our simplified names
-    const normTobacco = item.tobaccoVal * (unitToKG[item.tobaccoUnit] || 1);
-    const normTow = item.towVal * (unitToKG[item.towUnit] || 1);
-    
+    // 1. Normalize all precursors to KG
+    const tobaccoKG = item.t_val * (unitToKG[item.t_unit?.toLowerCase()] || 1);
+    const towKG = item.tow_val * (unitToKG[item.tow_unit?.toLowerCase()] || 1);
+    const paperMeters = item.p_val; // Assuming paper is in meters or rolls
+    const rodsCount = item.f_val;   // Assuming rods are raw counts
+
     const wasteFactor = (100 - wastage) / 100;
-    const yieldTobacco = (normTobacco * wasteFactor) / 0.0007;
-    const yieldTow = (normTow * wasteFactor) * 20000;
-    
-    const theoreticalMax = Math.min(yieldTobacco, yieldTow);
+
+    // 2. CONVERSION RATIOS (Forensic Standards)
+    // Tobacco: ~0.7g per stick | Tow: ~1kg for 20,000 filters
+    // Paper: ~1 meter for 12 sticks | Rods: 1 rod = 6 filters
+    const yieldT = (tobaccoKG * wasteFactor) / 0.0007;
+    const yieldTow = (towKG * wasteFactor) * 20000;
+    const yieldPaper = (paperMeters * wasteFactor) * 12;
+    const yieldRods = (rodsCount * wasteFactor) * 6;
+
+    // 3. THE LIMITING FACTOR (The lowest number is the true capacity)
+    const theoreticalMax = Math.min(yieldT, yieldTow, yieldPaper, yieldRods);
     
     theoreticalPool += theoreticalMax;
     cumulativeSticksOut += item.outflow;
 
     return {
       ...item,
-      normTobacco,
+      tobaccoKG,
       theoreticalMax,
       cumulativeInput: theoreticalPool,
       cumulativeOutput: cumulativeSticksOut,
-      // First digit for Benford
-      firstDigit: parseInt(item.outflow.toString()[0]) || 0,
-      priceIndex: normTobacco > 0 ? (item.outflow / normTobacco) : 0
+      priceIndex: tobaccoKG > 0 ? (item.outflow / tobaccoKG) : 0
     };
   });
 }, [data, wastage]);
+  
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
     if (processedData.length === 0) return [];
