@@ -71,18 +71,16 @@ const fetchSheetData = async () => {
   } catch (e) { console.error(e); }
 };
   
-// --- 1. THE DATA ENGINE ---
+// --- 1. THE DATA ENGINE (Calculates everything in one pass) ---
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-  
-  // Helper to force clean numbers
   const n = (val) => {
     if (!val) return 0;
     const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
     return isNaN(parsed) ? 0 : Math.abs(parsed);
   };
 
-  // 1. Strict Filter (Ensures only rows with Entity + Month exist)
+  // Filter out the "62 Entities" bug (Ghost rows)
   const validData = data.filter(d => d.entity && d.entity.trim().length > 2 && d.month);
 
   let invPool = 0; 
@@ -93,27 +91,25 @@ const processedData = useMemo(() => {
     
     // Core Volumes
     const tKG = n(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
-    const monthlyCap = (tKG * eff) / 0.0007; // 0.7g standard per stick
+    const monthlyCap = (tKG * eff) / 0.0007;
     const monthlyOut = n(d.outflow);
 
-    // --- FEATURE: INVENTORY DECAY (2% loss per month) ---
+    // FEATURE: INVENTORY DECAY (2% loss/month)
     invPool = (invPool * 0.98) + monthlyCap;
     cumOutflow += monthlyOut;
 
-    // --- FEATURE: PRECURSOR DIVERGENCE (PDI) ---
-    // Divergence shows if they have tobacco but "forgot" to import paper
+    // FEATURE: PRECURSOR DIVERGENCE (Tobacco vs Paper)
     const paperCap = n(d.p_val) * 12 * eff; 
     const pdi = paperCap > 0 ? ((monthlyCap - paperCap) / monthlyCap) * 100 : 0;
 
-    // --- FEATURE: TRANSIT RISK SCORE ---
-    const origin = String(d.t_origin || "").toUpperCase();
-    const dest = String(d.dest || "").toUpperCase();
+    // FEATURE: TRANSIT RISK (Origin/Destination Check)
+    const origin = String(d.t_origin || d.tobaccoOrigin || "").toUpperCase();
+    const dest = String(d.dest || d.destination || "").toUpperCase();
     const highRiskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "CYPRUS"];
-    const transitRiskScore = (highRiskHubs.includes(origin) || highRiskHubs.includes(dest)) ? 85 : 15;
+    const isHighRisk = highRiskHubs.includes(origin) || highRiskHubs.includes(dest);
 
     return {
       ...d,
-      // FIX X-AXIS: Explicit string label
       xAxisLabel: `${String(d.month).substring(0,3)} ${String(d.year).slice(-2)}`,
       tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
@@ -121,51 +117,35 @@ const processedData = useMemo(() => {
       cumulativeOutput: Math.round(cumOutflow),
       pdi: Math.round(pdi), 
       stampGap: Math.max(0, cumOutflow - invPool),
-      transitRiskScore,
+      transitRiskScore: isHighRisk ? 85 : 15,
       isAnomalous: Math.abs(pdi) > 25 || (cumOutflow > invPool),
       firstDigit: parseInt(String(monthlyOut)[0]) || 0
     };
   });
 }, [data, wastage]);
 
-// --- 2. KPI CALCULATIONS (Add these right after the block above) ---
-const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
-const totalGhostVolume = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
-const activeEntities = new Set(processedData.map(d => d.entity)).size;
-const avgPDI = Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / (processedData.length || 1));
-
-// Filter for the top 5 most suspicious shipments
-const riskAnomalies = processedData
-  .filter(d => d.isAnomalous || d.transitRiskScore > 50)
-  .sort((a, b) => b.transitRiskScore - a.transitRiskScore)
-  .slice(0, 5);
-
-// Summarize where tobacco comes from
-const originAnalysis = (() => {
-  const summary = {};
-  processedData.forEach(d => {
-    const org = d.t_origin || "Unknown";
-    summary[org] = (summary[org] || 0) + d.tobaccoKG;
-  });
-  return Object.entries(summary).map(([name, value]) => ({ name, value }));
-})();
-
-// --- STEP 3: ORIGIN INTELLIGENCE ---
-const originAnalysis = useMemo(() => {
-  const summary = {};
-  processedData.forEach(d => {
-    const org = d.t_origin || "Unknown";
-    summary[org] = (summary[org] || 0) + d.tobaccoKG;
-  });
-  return Object.entries(summary).map(([name, value]) => ({ name, value }));
-}, [processedData]);
-
-  const riskAnomalies = useMemo(() => {
+// --- 2. THE ANALYTICS HELPERS (Derived from ProcessedData) ---
+const riskAnomalies = useMemo(() => {
   return processedData
     .filter(d => d.isAnomalous || d.transitRiskScore > 50)
     .sort((a, b) => b.transitRiskScore - a.transitRiskScore)
-    .slice(0, 5); // Show top 5 highest risk rows
+    .slice(0, 5);
 }, [processedData]);
+
+const originAnalysis = useMemo(() => {
+  const summary = {};
+  processedData.forEach(d => {
+    const org = d.t_origin || d.tobaccoOrigin || "Unknown";
+    summary[org] = (summary[org] || 0) + d.tobaccoKG;
+  });
+  return Object.entries(summary).map(([name, value]) => ({ name, value }));
+}, [processedData]);
+
+// --- 3. THE KPI BOXES (What the visual dashboard sees) ---
+const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
+const totalGhostVolume = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
+const activeEntities = new Set(processedData.map(d => d.entity)).size;
+const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / processedData.length) : 0;
   
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
