@@ -84,70 +84,114 @@ const ForensicMonitor = () => {
   }
 };
 const processedData = useMemo(() => {
-  const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-  let pool = 0; 
-  let actual = 0;
-
-  return data.map((d) => {
-    const waste = (100 - wastage) / 100;
-
-    // Standard Industry Ratios
-    const kgT = d.t_val * (units[d.t_unit?.toLowerCase()] || 1);
-    const capT = (kgT * waste) / 0.0007; // 0.7g per stick
-
-    const kgTow = d.tow_val * (units[d.tow_unit?.toLowerCase()] || 1);
-    const capTow = (kgTow * waste) * 20000; // 1kg tow = 20k filters
-
-    const capPaper = (d.p_val * waste) * 12; // 1m paper = 12 sticks
-    const capRods = (d.f_val * waste) * 6;   // 1 rod = 6 filters
-
-    // Capacity is limited by the scarcest resource
-    // If a row has 0 for a precursor, we use only the available ones
-    const capacities = [capT, capTow, capPaper, capRods].filter(v => v > 0);
-    const theoreticalMax = capacities.length > 0 ? Math.min(...capacities) : 0;
-    
-    pool += theoreticalMax;
-    actual += d.outflow;
-
-    return {
-      ...d,
-      tobaccoKG: kgT,
-      theoreticalMax,
-      cumulativeInput: pool,
-      cumulativeOutput: actual,
-      // For Benford's Law chart
-      firstDigit: parseInt(d.outflow.toString()[0]) || 0,
-      priceIndex: kgT > 0 ? (d.outflow / kgT) : 0
+    // --- THE NAN FIX HELPER ---
+    const cleanNum = (val) => {
+      if (val === null || val === undefined || val === '') return 0;
+      const parsed = parseFloat(val);
+      return isNaN(parsed) ? 0 : parsed;
     };
-  });
-}, [data, wastage]);
+
+    const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
+    let pool = 0; 
+    let actual = 0;
+
+    return data.map((d) => {
+      // Apply the fix to every numeric field
+      const tVal = cleanNum(d.t_val);
+      const towVal = cleanNum(d.tow_val);
+      const pVal = cleanNum(d.p_val);
+      const fVal = cleanNum(d.f_val);
+      const outflow = cleanNum(d.outflow);
+
+      const waste = (100 - wastage) / 100;
+
+      // Forensic Ratios
+      const kgT = tVal * (units[d.t_unit?.toLowerCase()] || 1);
+      const capT = (kgT * waste) / 0.0007;
+
+      const kgTow = towVal * (units[d.tow_unit?.toLowerCase()] || 1);
+      const capTow = (kgTow * waste) * 20000;
+
+      const capPaper = (pVal * waste) * 12;
+      const capRods = (fVal * waste) * 6;
+
+      // Identify the limiting precursor
+      const caps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
+      const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
+      
+      pool += theoreticalMax;
+      actual += outflow;
+
+      // 1. CLEAN THE DATA FIRST
+      const tVal = cleanNum(d.t_val);
+      const towVal = cleanNum(d.tow_val);
+      const pVal = cleanNum(d.p_val);
+      const fVal = cleanNum(d.f_val);
+      const outflow = cleanNum(d.outflow);
+
+      const waste = (100 - wastage) / 100;
+
+      // 2. RUN CALCULATIONS
+      const kgT = tVal * (units[d.t_unit?.toLowerCase()] || 1);
+      const capT = (kgT * waste) / 0.0007;
+
+      const kgTow = towVal * (units[d.tow_unit?.toLowerCase()] || 1);
+      const capTow = (kgTow * waste) * 20000;
+
+      const capPaper = (pVal * waste) * 12;
+      const capRods = (fVal * waste) * 6;
+
+      const caps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
+      const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
+      
+      pool += theoreticalMax;
+      actual += outflow;
+      return {
+        ...d,
+        tobaccoKG: kgT,
+        outflow: outflow, // Ensuring outflow is a clean number for Benford
+        theoreticalMax,
+        cumulativeInput: pool,
+        cumulativeOutput: actual,
+        firstDigit: parseInt(outflow.toString()[0]) || 0,
+        priceIndex: kgT > 0 ? (outflow / kgT) : 0
+      };
+    });
+  }, [data, wastage]);
+
+  const totalOutflow = processedData.reduce((acc, curr) => acc + curr.outflow, 0);
   
+  const totalGhostVolume = processedData.reduce((acc, curr) => {
+    const ghost = curr.cumulativeOutput - curr.cumulativeInput;
+    return acc + Math.max(0, ghost);
+  }, 0);
+
+  const activeEntities = new Set(processedData.map(d => d.entity)).size;
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
     if (processedData.length === 0) return [];
     
     const counts = Array(9).fill(0);
-    processedData.forEach(d => {
-      // We look at the first digit of the Outflow_Sticks
-      const firstDigit = parseInt(d.outflow?.toString()[0]);
-      if (firstDigit > 0 && firstDigit <= 9) {
-        counts[firstDigit - 1]++;
-      }
+    // We only look at rows where the outflow is greater than 0
+    const validRows = processedData.filter(d => d.firstDigit > 0);
+    
+    validRows.forEach(d => {
+      counts[d.firstDigit - 1]++;
     });
 
-    const total = counts.reduce((a, b) => a + b, 0);
-    const idealBenford = [30.1, 17.6, 12.5, 9.7, 7.9, 6.7, 5.8, 5.1, 4.6];
-
-    return counts.map((c, i) => ({
-      digit: i + 1,
-      actual: total > 0 ? (c / total) * 100 : 0,
-      ideal: idealBenford[i]
+    const idealDistribution = [30.1, 17.6, 12.5, 9.7, 7.9, 6.7, 5.8, 5.1, 4.6];
+    
+    return counts.map((count, i) => ({
+      digit: (i + 1).toString(),
+      actual: validRows.length > 0 ? parseFloat(((count / validRows.length) * 100).toFixed(1)) : 0,
+      ideal: idealDistribution[i]
     }));
   }, [processedData]);
   const totalGap = processedData.reduce((acc, curr) => acc + curr.gap, 0);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
+      
       {/* SYNC PANEL - OBSIDIAN DARK THEME */}
       <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
         <div className="flex flex-col md:flex-row gap-6 items-end">
@@ -173,37 +217,55 @@ const processedData = useMemo(() => {
         </div>
       </div>
 
-      {/* METRICS ROW */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Wastage Tolerance</p>
-            <input 
-                type="range" min="0" max="25" value={wastage} 
-                onChange={(e) => setWastage(e.target.value)} 
-                className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
-            />
-            <div className="flex justify-between mt-2 text-[10px] font-bold text-emerald-600 uppercase">
-                <span>Current: {wastage}%</span>
-                <span>Margin: {Math.round(25-wastage)}%</span>
-            </div>
-         </div>
+  {/* METRICS ROW */}
+<div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    {/* 1. Wastage Slider (Keep as is) */}
+    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] shadow-sm">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Wastage Tolerance</p>
+        <input 
+            type="range" min="0" max="25" value={wastage} 
+            onChange={(e) => setWastage(e.target.value)} 
+            className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
+        />
+        <div className="flex justify-between mt-2 text-[10px] font-bold text-emerald-600 uppercase">
+            <span>Current: {wastage}%</span>
+            <span>Margin: {Math.round(25-wastage)}%</span>
+        </div>
+    </div>
 
-         <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Ghost Volume</p>
-              <p className="text-2xl font-black text-black mt-1">{Math.round(totalGap).toLocaleString()}</p>
-            </div>
-            <ShieldAlert className="text-red-500" size={32} />
-         </div>
+    {/* 2. UPDATED: Ghost Volume (Now uses totalGhostVolume) */}
+    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
+        <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Ghost Volume</p>
+            <p className="text-2xl font-black text-red-600 mt-1">
+                {Math.round(totalGhostVolume).toLocaleString()}
+            </p>
+        </div>
+        <ShieldAlert className="text-red-500" size={32} />
+    </div>
 
-         <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Entities</p>
-              <p className="text-2xl font-black text-emerald-600 mt-1">{new Set(data.map(d=>d.entity)).size}</p>
-            </div>
-            <Activity className="text-emerald-500" size={32} />
-         </div>
-      </div>
+    {/* 3. NEW: Total Exports (Gives context to the Ghost Volume) */}
+    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
+        <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Exports</p>
+            <p className="text-2xl font-black text-black mt-1">
+                {Math.round(totalOutflow).toLocaleString()}
+            </p>
+        </div>
+        <BarChart3 className="text-slate-400" size={32} />
+    </div>
+
+    {/* 4. Active Entities (Keep as is) */}
+    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
+        <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Entities</p>
+            <p className="text-2xl font-black text-emerald-600 mt-1">
+                {new Set(processedData.map(d => d.entity)).size}
+            </p>
+        </div>
+        <Activity className="text-emerald-500" size={32} />
+    </div>
+</div>
 
       {/* 2. MACRO-FORENSIC SUITE (SMOKING GUN, BENFORD, SCATTER) */}
       <div className="space-y-8 mt-8">
@@ -219,30 +281,34 @@ const processedData = useMemo(() => {
             </p>
           </div>
           <div className="h-[350px] w-full">
-            <ResponsiveContainer>
-              <ComposedChart data={processedData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                <XAxis dataKey="month" stroke="#475569" fontSize={10} fontStyle="bold" />
-                <YAxis stroke="#475569" fontSize={10} fontStyle="bold" />
-                <Tooltip 
-                  contentStyle={{backgroundColor: '#0f172a', border: 'none', borderRadius: '12px', fontSize: '10px'}} 
-                  itemStyle={{fontWeight: '900'}}
-                />
-<Area 
-  name="Theoretical Pool" 
-  dataKey="cumulativeInput"  /* MUST MATCH processedData return */
-  fill="#10b981" 
-  stroke="#10b981" 
-  fillOpacity={0.1} 
-/>
-<Line 
-  name="Actual Exports" 
-  dataKey="cumulativeOutput" /* MUST MATCH processedData return */
-  stroke="#ef4444" 
-  strokeWidth={4} 
-/>
-              </ComposedChart>
-            </ResponsiveContainer>
+            <ResponsiveContainer width="100%" height={350}>
+  <ComposedChart data={processedData}>
+    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+    <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} tickMargin={10} />
+    <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(val) => val.toLocaleString()} />
+    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
+    <Legend verticalAlign="top" align="right" height={36}/>
+    
+    {/* Theoretical Capacity Area */}
+    <Area 
+      name="Theoretical Max (Legal)" 
+      dataKey="cumulativeInput" 
+      fill="#10b981" 
+      stroke="#10b981" 
+      fillOpacity={0.2} 
+    />
+    
+    {/* Actual Exports Line */}
+    <Line 
+      name="Actual Exports (Reported)" 
+      type="monotone" 
+      dataKey="cumulativeOutput" 
+      stroke="#ef4444" 
+      strokeWidth={3} 
+      dot={{ fill: '#ef4444' }}
+    />
+  </ComposedChart>
+</ResponsiveContainer>
           </div>
         </div>
 
@@ -253,13 +319,16 @@ const processedData = useMemo(() => {
               <BarChart3 size={16} className="text-blue-600" /> Benford's Law (Integrity Audit)
             </h3>
             <div className="h-[250px] w-full">
-              <ResponsiveContainer>
-              <BarChart data={benfordAnalysis}>
-  <XAxis dataKey="digit" /> 
-  <Bar dataKey="actual" fill="#3b82f6" name="Actual %" />
-  <Line type="step" dataKey="ideal" stroke="#94a3b8" name="Expected %" />
-</BarChart>
-              </ResponsiveContainer>
+<ResponsiveContainer width="100%" height={300}>
+  <BarChart data={benfordAnalysis}>
+    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+    <XAxis dataKey="digit" stroke="#94a3b8" />
+    <YAxis stroke="#94a3b8" unit="%" />
+    <Tooltip />
+    <Bar dataKey="actual" fill="#3b82f6" name="Reported %" radius={[4, 4, 0, 0]} />
+    <Line type="step" dataKey="ideal" stroke="#94a3b8" name="Expected %" strokeDasharray="5 5" />
+  </BarChart>
+</ResponsiveContainer>
             </div>
           </div>
 
