@@ -84,66 +84,55 @@ const ForensicMonitor = () => {
   }
 };
 // --- 1. THE DATA ENGINE ---
-  const processedData = useMemo(() => {
-    // Standard weight conversion map
-    const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
+const processedData = useMemo(() => {
+  const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
+  const cleanNum = (val) => {
+    if (!val) return 0;
+    const n = parseFloat(val.toString().replace(/[^\d.-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+
+  let pool = 0; 
+  let actual = 0;
+
+  // 1. Filter out empty rows to fix the "73 Entities" bug
+  const validData = data.filter(d => d.entity && d.entity.trim() !== "");
+
+  return validData.map((d) => {
+    const currentWaste = (100 - wastage) / 100;
+
+    // Convert all precursors to Stick Capacity
+    const capT = (d.t_val * (units[d.t_unit?.toLowerCase()] || 1) * currentWaste) / 0.0007;
+    const capTow = (d.tow_val * (units[d.tow_unit?.toLowerCase()] || 1) * currentWaste) * 20000;
+    const capPaper = (d.p_val * currentWaste) * 12;
+    const capRods = (d.f_val * currentWaste) * 6;
+
+    // Find the bottleneck
+    const caps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
+    const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
     
-    // Helper to turn empty/bad text into 0
-    const cleanNum = (val) => {
-      if (val === null || val === undefined || val === '') return 0;
-      const parsed = parseFloat(val);
-      return isNaN(parsed) ? 0 : parsed;
+    pool += theoreticalMax;
+    actual += d.outflow;
+
+    return {
+      ...d,
+      displayLabel: `${d.month} ${d.year}`, // Fixes the X-Axis "weird descriptions"
+      theoreticalMax: Math.round(theoreticalMax),
+      cumulativeInput: Math.round(pool),
+      cumulativeOutput: Math.round(actual),
+      firstDigit: parseInt(d.outflow.toString()[0]) || 0,
+      priceIndex: d.t_val > 0 ? (d.outflow / d.t_val) : 0
     };
+  });
+}, [data, wastage]);
 
-    let runningPool = 0; 
-    let runningActual = 0;
-
-    return data.map((d) => {
-      // A. Clean inputs
-      const tVal = cleanNum(d.t_val);
-      const towVal = cleanNum(d.tow_val);
-      const pVal = cleanNum(d.p_val);
-      const fVal = cleanNum(d.f_val);
-      const rowOutflow = cleanNum(d.outflow);
-
-      // B. Conversion Math (using the 'wastage' state)
-      const currentWasteFactor = (100 - wastage) / 100;
-
-      const capT = (tVal * (units[d.t_unit?.toLowerCase()] || 1) * currentWasteFactor) / 0.0007;
-      const capTow = (towVal * (units[d.tow_unit?.toLowerCase()] || 1) * currentWasteFactor) * 20000;
-      const capPaper = (pVal * currentWasteFactor) * 12;
-      const capRods = (fVal * currentWasteFactor) * 6;
-
-      // C. Limiting Factor (Logic: A factory can't produce more than its scarcest ingredient allows)
-      const potentialCaps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
-      const theoreticalMax = potentialCaps.length > 0 ? Math.min(...potentialCaps) : 0;
-      
-      runningPool += theoreticalMax;
-      runningActual += rowOutflow;
-
-      return {
-        ...d,
-        outflow: rowOutflow,
-        theoreticalMax,
-        cumulativeInput: runningPool,
-        cumulativeOutput: runningActual,
-        // First digit for the Benford Detector
-        firstDigit: parseInt(rowOutflow.toString()[0]) || 0,
-        priceIndex: tVal > 0 ? (rowOutflow / tVal) : 0
-      };
-    });
-  }, [data, wastage]);
-
-  // --- 2. THE SNAPSHOT MATH (Fixes the NaN boxes) ---
-  const totalOutflow = processedData.reduce((acc, curr) => acc + curr.outflow, 0);
-  
-  const totalGhostVolume = processedData.reduce((acc, curr) => {
-    // Ghost volume is the excess of exports over legal capacity
-    const gap = curr.cumulativeOutput - curr.cumulativeInput;
-    return acc + Math.max(0, gap);
-  }, 0);
-
-  const activeEntities = new Set(processedData.map(d => d.entity)).size;
+// --- KPI MATH (Removing Decimals) ---
+const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
+const totalGhostVolume = Math.round(processedData.reduce((acc, curr) => {
+  const gap = curr.cumulativeOutput - curr.cumulativeInput;
+  return acc + Math.max(0, gap);
+}, 0));
+const activeEntities = new Set(processedData.map(d => d.entity)).size;
 
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
@@ -259,32 +248,26 @@ const ForensicMonitor = () => {
             </p>
           </div>
           <div className="h-[350px] w-full">
-            <ResponsiveContainer width="100%" height={350}>
-  <ComposedChart data={processedData}>
+            <ResponsiveContainer width="100%" height={400}>
+  <ComposedChart 
+    data={processedData} 
+    margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // Adds space so numbers aren't cut
+  >
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-    <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} tickMargin={10} />
-    <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(val) => val.toLocaleString()} />
-    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
-    <Legend verticalAlign="top" align="right" height={36}/>
-    
-    {/* Theoretical Capacity Area */}
-    <Area 
-      name="Theoretical Max (Legal)" 
-      dataKey="cumulativeInput" 
-      fill="#10b981" 
-      stroke="#10b981" 
-      fillOpacity={0.2} 
+    <XAxis 
+      dataKey="displayLabel" // Uses the new "Month Year" label
+      stroke="#94a3b8" 
+      angle={-45} 
+      textAnchor="end" 
+      height={70} 
     />
-    
-    {/* Actual Exports Line */}
-    <Line 
-      name="Actual Exports (Reported)" 
-      type="monotone" 
-      dataKey="cumulativeOutput" 
-      stroke="#ef4444" 
-      strokeWidth={3} 
-      dot={{ fill: '#ef4444' }}
+    <YAxis 
+      stroke="#94a3b8" 
+      tickFormatter={(val) => val >= 1000000 ? `${(val/1000000).toFixed(0)}M` : val.toLocaleString()} 
     />
+    <Tooltip />
+    <Area name="Legal Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
+    <Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
   </ComposedChart>
 </ResponsiveContainer>
           </div>
@@ -316,13 +299,14 @@ const ForensicMonitor = () => {
               <DollarSign size={16} className="text-emerald-600" /> Value-Mass Correlation
             </h3>
             <div className="h-[250px] w-full">
-              <ResponsiveContainer>
-<ScatterChart>
-  <XAxis type="number" dataKey="normTobacco" name="Tobacco KG" />
-  <YAxis type="number" dataKey="priceIndex" name="Sticks per KG" />
-  <Scatter name="Shipments" data={processedData} fill="#10b981" />
-</ScatterChart>
-              </ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={300}>
+  <ScatterChart margin={{ left: 20, right: 20 }}>
+    <XAxis type="number" dataKey="t_val" name="Tobacco (KG)" stroke="#94a3b8" />
+    <YAxis type="number" dataKey="outflow" name="Sticks" stroke="#94a3b8" />
+    <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+    <Scatter name="Shipments" data={processedData} fill="#3b82f6" />
+  </ScatterChart>
+</ResponsiveContainer>
             </div>
           </div>
         </div>
