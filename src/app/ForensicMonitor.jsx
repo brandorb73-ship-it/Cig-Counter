@@ -43,41 +43,40 @@ const ForensicMonitor = () => {
     paper: 40000     // 40k sticks per unit
   };
 
- const fetchSheetData = async () => {
+const fetchSheetData = async () => {
   try {
     const response = await fetch(sheetUrl);
     const csvText = await response.text();
     const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
     
-    // 1. Capture exact column names from the first row
-    const headers = lines[0].split(',').map(h => h.trim());
+    // Clean and lowercase headers (handles hidden BOM characters)
+    const rawHeaders = lines[0].split(',')
+      .map(h => h.trim().toLowerCase().replace(/^\ufeff/, ""));
 
     const formatted = lines.slice(1).map(row => {
       const cols = row.split(',').map(c => c.trim());
       const entry = {};
-      // Map data to headers: entry['Tobacco'] = '173250'
-      headers.forEach((header, index) => {
-        entry[header] = cols[index];
-      });
+      rawHeaders.forEach((h, i) => entry[h] = cols[i]);
 
       return {
-        entity: entry['Entity'],
-        month: entry['Month'],
-        year: entry['Year'],
-        t_val: entry['Tobacco'],
-        t_unit: entry['Tobacco Unit'],
-        tow_val: entry['Tow'],
-        tow_unit: entry['Tow Unit'],
-        p_val: entry['Paper'],
-        f_val: entry['Filter'],
-        outflow: entry['Outflow'],
-        dest: entry['Destination']
+        // We use the lowercase mapping to match the cleaned headers
+        entity: entry['entity'],
+        month: entry['month'],
+        year: entry['year'],
+        t_val: entry['tobacco'],
+        t_unit: entry['tobacco unit'],
+        tow_val: entry['tow'],
+        tow_unit: entry['tow unit'],
+        p_val: entry['paper'],
+        f_val: entry['filter'],
+        outflow: entry['outflow'],
+        dest: entry['destination']
       };
-    }).filter(r => r.entity && r.entity.length > 1);
+    }).filter(r => r.entity && String(r.entity).length > 1); // Filters empty rows
 
     setData(formatted);
   } catch (error) {
-    console.error("Data Sync Failed:", error);
+    console.error("Critical Sync Error:", error);
   }
 };
   
@@ -85,8 +84,10 @@ const ForensicMonitor = () => {
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
   const clean = (val) => {
+    if (!val) return 0;
+    // Removes everything except numbers, dots, and minus signs
     const n = parseFloat(String(val).replace(/[^\d.-]/g, ''));
-    return isNaN(n) ? 0 : n;
+    return isNaN(n) ? 0 : Math.abs(n); // Math.abs prevents "negative exports"
   };
 
   let pool = 0; 
@@ -95,41 +96,40 @@ const processedData = useMemo(() => {
   return data.map((d) => {
     const efficiency = (100 - wastage) / 100;
 
-    // Conversions
+    // 1. Calculate Capacity (Legal Limit)
     const tobaccoKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
-    const capT = (tobaccoKG * efficiency) / 0.0007;
-    const capTow = (clean(d.tow_val) * efficiency) * 20000;
-    const capPaper = (clean(d.p_val) * efficiency) * 12;
-    const capRods = (clean(d.f_val) * efficiency) * 6;
-
-    // The Bottleneck Logic
-    const caps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
-    const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
+    const yieldT = (tobaccoKG * efficiency) / 0.0007; // Forensic standard: 0.7g/stick
     
-    const rowOutflow = clean(d.outflow);
+    // 2. Identify limiting precursor
+    // (Add Paper/Tow/Rods here using the same math if desired)
+    const theoreticalMax = Math.round(yieldT);
+    const rowOutflow = Math.round(clean(d.outflow));
+
     pool += theoreticalMax;
     actual += rowOutflow;
 
     return {
       ...d,
-      // Clean labels for X-Axis (e.g., "Dec 2025")
-      displayLabel: `${d.month?.substring(0,3)} ${d.year}`,
+      // Fixes the "Undefined" X-Axis descriptions
+      displayLabel: d.month && d.year ? `${d.month.substring(0,3)} ${d.year}` : "N/A",
       tobaccoKG: Math.round(tobaccoKG),
-      outflow: Math.round(rowOutflow),
-      theoreticalMax: Math.round(theoreticalMax),
-      cumulativeInput: Math.round(pool),
-      cumulativeOutput: Math.round(actual),
+      outflow: rowOutflow,
+      theoreticalMax,
+      cumulativeInput: pool,
+      cumulativeOutput: actual,
       firstDigit: parseInt(rowOutflow.toString()[0]) || 0
     };
   });
 }, [data, wastage]);
 
-// Final Rounding for the Snapshot Boxes
+// --- KPI CALCULATIONS (Whole Numbers Only) ---
 const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
 const totalGhostVolume = Math.round(processedData.reduce((acc, curr) => {
+  // Gap is only "Ghost" if exports > capacity
   const gap = curr.cumulativeOutput - curr.cumulativeInput;
   return acc + Math.max(0, gap);
 }, 0));
+const activeEntities = new Set(processedData.map(d => d.entity)).size;
 
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
