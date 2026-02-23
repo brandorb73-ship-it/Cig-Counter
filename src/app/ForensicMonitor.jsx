@@ -49,29 +49,25 @@ const fetchSheetData = async () => {
     const csvText = await response.text();
     const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
     
-    // We skip the first line (headers) and map by index
     const formatted = lines.slice(1).map(row => {
-      const cols = row.split(',').map(c => c.trim());
+      // Split by comma, but remove any quotes that Excel adds
+      const cols = row.split(',').map(c => c.trim().replace(/^["']|["']$/g, ""));
       
       return {
-        entity: cols[0],   // Column A
-        month: cols[1],    // Column B
-        year: cols[2],     // Column C
-        t_val: cols[3],    // Column D
-        t_unit: cols[4],   // Column E
-        tow_val: cols[6],  // Column G
-        tow_unit: cols[7], // Column H
-        p_val: cols[9],    // Column J
-        f_val: cols[12],   // Column M
-        outflow: cols[15], // Column P
-        dest: cols[16]     // Column Q
+        entity: cols[0],
+        month: cols[1],
+        year: cols[2],
+        t_val: cols[3],    // Tobacco
+        t_unit: cols[4],   // Unit
+        tow_val: cols[6],  // Tow
+        p_val: cols[9],    // Paper
+        f_val: cols[12],   // Filter
+        outflow: cols[15], // Outflow
       };
-    }).filter(r => r.entity && r.entity.length > 2); // This fixes the "73 entities" bug
+    }).filter(r => r.entity && r.entity.length > 3); // STOPS THE 71 ENTITIES BUG
 
     setData(formatted);
-  } catch (e) {
-    console.error("Fetch failed:", e);
-  }
+  } catch (e) { console.error(e); }
 };
   
 // --- 1. THE DATA ENGINE ---
@@ -87,29 +83,22 @@ const processedData = useMemo(() => {
   let actual = 0;
 
   return data.map((d) => {
-    const efficiency = (100 - wastage) / 100;
-
-    // 1. Raw Materials to Stick Capacity
-    const tobaccoKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
-    const capT = (tobaccoKG * efficiency) / 0.0007;
-    const capP = (clean(d.p_val) * efficiency) * 12;
-    const capR = (clean(d.f_val) * efficiency) * 6;
-
-    // 2. Limiting Factor
-    const caps = [capT, capP, capR].filter(v => v > 0);
-    const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
+    const eff = (100 - wastage) / 100;
+    const tKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
     
+    // 0.7g per stick is the forensic standard
+    const capT = (tKG * eff) / 0.0007;
     const rowOutflow = clean(d.outflow);
-    pool += theoreticalMax;
+
+    pool += capT;
     actual += rowOutflow;
 
     return {
       ...d,
-      // FIX X-AXIS: Creates "Dec 2025"
-      displayLabel: `${d.month?.substring(0,3)} ${d.year}`,
-      tobaccoKG: Math.round(tobaccoKG),
+      // This is the key for your X-Axis
+      chartLabel: `${d.month.substring(0,3)} ${d.year}`, 
+      tobaccoKG: Math.round(tKG),
       outflow: Math.round(rowOutflow),
-      theoreticalMax: Math.round(theoreticalMax),
       cumulativeInput: Math.round(pool),
       cumulativeOutput: Math.round(actual),
       firstDigit: parseInt(rowOutflow.toString()[0]) || 0
@@ -246,20 +235,15 @@ const activeEntities = new Set(processedData.map(d => d.entity)).size;
     margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // Adds space so numbers aren't cut
   >
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-    <XAxis 
-      dataKey="displayLabel" // Uses the new "Month Year" label
-      stroke="#94a3b8" 
-      angle={-45} 
-      textAnchor="end" 
-      height={70} 
-    />
-    <YAxis 
-      stroke="#94a3b8" 
-      tickFormatter={(val) => val >= 1000000 ? `${(val/1000000).toFixed(0)}M` : val.toLocaleString()} 
-    />
-    <Tooltip />
-    <Area name="Legal Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
-    <Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
+   <XAxis dataKey="chartLabel" stroke="#94a3b8" fontSize={10} />
+<YAxis 
+  width={80} 
+  stroke="#94a3b8" 
+  fontSize={10} 
+  tickFormatter={(v) => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v.toLocaleString()} 
+/>
+<Area dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
+<Line dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
   </ComposedChart>
 </ResponsiveContainer>
           </div>
@@ -292,12 +276,12 @@ const activeEntities = new Set(processedData.map(d => d.entity)).size;
             </h3>
             <div className="h-[250px] w-full">
               <ResponsiveContainer width="100%" height={300}>
-  <ScatterChart margin={{ left: 20, right: 20 }}>
-    <XAxis type="number" dataKey="t_val" name="Tobacco (KG)" stroke="#94a3b8" />
-    <YAxis type="number" dataKey="outflow" name="Sticks" stroke="#94a3b8" />
-    <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-    <Scatter name="Shipments" data={processedData} fill="#3b82f6" />
-  </ScatterChart>
+<ScatterChart margin={{ left: 40, bottom: 20 }}>
+  <XAxis type="number" dataKey="tobaccoKG" name="Tobacco" unit="kg" stroke="#94a3b8" />
+  <YAxis type="number" dataKey="outflow" name="Sticks" stroke="#94a3b8" />
+  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+  <Scatter name="Shipments" data={processedData} fill="#3b82f6" />
+</ScatterChart>
 </ResponsiveContainer>
             </div>
           </div>
