@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { 
-  ComposedChart, 
+  AreaChart, 
   Line, 
   Bar, 
   BarChart,
