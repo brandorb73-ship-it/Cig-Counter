@@ -71,7 +71,6 @@ const fetchSheetData = async () => {
   } catch (e) { console.error(e); }
 };
   
-// --- 1. THE DATA ENGINE (Calculates everything in one pass) ---
 // --- 1. THE DATA ENGINE ---
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
@@ -82,12 +81,13 @@ const processedData = useMemo(() => {
   };
 
   // CLEANING: This line kills the "16 Entities" bug by ignoring any row without a valid Month
-  const validData = data.filter(d => 
-    d.entity && 
-    d.entity.trim().length > 2 && 
-    d.month && 
-    d.month.trim() !== ""
-  );
+const validData = data.filter(d => 
+  d.entity && 
+  d.entity.trim().length > 1 && 
+  d.month && 
+  d.month.trim() !== "" &&
+  !d.month.includes('=') // Kills formula ghost rows
+);
 
   let invPool = 0; 
   let cumOutflow = 0;
@@ -104,10 +104,19 @@ const processedData = useMemo(() => {
     const pCap = n(d.p_val) * 12 * eff; 
     const pdi = pCap > 0 ? ((monthlyCap - pCap) / monthlyCap) * 100 : 0;
 
-    // Transit Risk Logic
-    const hubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "CYPRUS"];
-    const isRisk = hubs.includes(String(d.t_origin || d.tobaccoOrigin).toUpperCase()) || 
-                   hubs.includes(String(d.dest || d.destination).toUpperCase());
+// MULTI-ORIGIN RISK SCAN
+const riskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "SEYCHELLES", "CYPRUS"];
+const allRoutes = [
+  String(d["Tobacco Origin"] || ""),
+  String(d["Tow Origin"] || ""),
+  String(d["Paper Origin"] || ""),
+  String(d["Filter Origin"] || ""),
+  String(d["Destination"] || "")
+].map(s => s.toUpperCase());
+
+// Count how many precursors are coming from high-risk zones
+const riskCount = allRoutes.filter(route => riskHubs.some(hub => route.includes(hub))).length;
+const transitRiskScore = riskCount > 0 ? (riskCount * 20) + 20 : 15;;
 
     return {
       ...d,
@@ -127,10 +136,12 @@ const processedData = useMemo(() => {
 }, [data, wastage]);
 
 // --- 2. KPI CALCULATIONS ---
-const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
-const totalGhostVolume = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
-const activeEntities = new Set(processedData.map(d => d.entity)).size; 
-const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / processedData.length) : 0;
+const totalOutflow = processedData.reduce((acc, curr) => acc + curr.outflow, 0);
+const totalGhostVolume = processedData[processedData.length - 1]?.stampGap || 0;
+const activeEntities = new Set(processedData.map(d => d.entity)).size;
+const avgPDI = processedData.length > 0 
+  ? Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / processedData.length) 
+  : 0;
 // ^ Should now show 1
   
 // --- 2. THE ANALYTICS HELPERS (Derived from ProcessedData) ---
@@ -175,32 +186,7 @@ const originAnalysis = useMemo(() => {
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
       
-      {/* SYNC PANEL - OBSIDIAN DARK THEME */}
-      <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
-        <div className="flex flex-col md:flex-row gap-6 items-end">
-          <div className="flex-1 space-y-2">
-            <label className="text-[10px] font-black uppercase text-emerald-400 tracking-[0.2em] flex items-center gap-2">
-              <Link size={12}/> Google Sheets Forensic Source (CSV)
-            </label>
-            <input 
-              type="text" 
-              value={sheetUrl}
-              onChange={(e) => setSheetUrl(e.target.value)}
-              placeholder="PASTE PUBLISHED URL..."
-              className="w-full bg-black/40 border-2 border-slate-800 p-4 rounded-2xl font-mono text-[11px] text-emerald-100 outline-none focus:border-emerald-500/50 transition-all placeholder:text-slate-700"
-            />
-          </div>
-          <button 
-            onClick={fetchSheetData}
-            disabled={loading}
-            className="bg-emerald-500 hover:bg-emerald-400 text-black px-10 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-30 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-          >
-            {loading ? 'ANALYZING...' : 'SYNC INTELLIGENCE'}
-          </button>
-        </div>
-      </div>
-
-  {/* METRICS ROW */}
+   {/* METRICS ROW */}
 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
     {/* 1. Wastage Slider (Keep as is) */}
     <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] shadow-sm">
@@ -250,6 +236,30 @@ const originAnalysis = useMemo(() => {
     </div>
 </div>
 
+           {/* SYNC PANEL - OBSIDIAN DARK THEME */}
+      <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
+        <div className="flex flex-col md:flex-row gap-6 items-end">
+          <div className="flex-1 space-y-2">
+            <label className="text-[10px] font-black uppercase text-emerald-400 tracking-[0.2em] flex items-center gap-2">
+              <Link size={12}/> Google Sheets Forensic Source (CSV)
+            </label>
+            <input 
+              type="text" 
+              value={sheetUrl}
+              onChange={(e) => setSheetUrl(e.target.value)}
+              placeholder="PASTE PUBLISHED URL..."
+              className="w-full bg-black/40 border-2 border-slate-800 p-4 rounded-2xl font-mono text-[11px] text-emerald-100 outline-none focus:border-emerald-500/50 transition-all placeholder:text-slate-700"
+            />
+          </div>
+          <button 
+            onClick={fetchSheetData}
+            disabled={loading}
+            className="bg-emerald-500 hover:bg-emerald-400 text-black px-10 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-30 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+          >
+            {loading ? 'ANALYZING...' : 'SYNC INTELLIGENCE'}
+          </button>
+        </div>
+      </div>
       {/* 2. MACRO-FORENSIC SUITE (SMOKING GUN, BENFORD, SCATTER) */}
       <div className="space-y-8 mt-8">
         
@@ -273,10 +283,13 @@ const originAnalysis = useMemo(() => {
 {/* Smoking Gun Axis */}
 <XAxis 
   dataKey="xAxisLabel" 
-  type="category"  // <--- THIS STOPS THE FORMULA ISSUE
-  stroke="#94a3b8" 
+  type="category"        // <--- CRITICAL: Tells the app "This is a Name, not Math"
+  stroke="#64748b" 
   fontSize={10} 
-  tick={{fill: '#94a3b8'}}
+  tickLine={false}
+  axisLine={false}
+  interval={0}           // <--- Shows EVERY month name
+  padding={{ left: 10, right: 10 }}
 />
 <YAxis 
   width={80} 
