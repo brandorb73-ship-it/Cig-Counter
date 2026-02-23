@@ -87,12 +87,17 @@ const processedData = useMemo(() => {
     (d.Entity || d.entity) && 
     (d.Month || d.month)
   );
-const sortedData = [...validData].sort((a, b) => {
+const monthOrder = {
+  jan: 1, feb: 2, mar: 3, apr: 4,
+  may: 5, jun: 6, jul: 7, aug: 8,
+  sep: 9, oct: 10, nov: 11, dec: 12
+};
+ const sortedData = [...validData].sort((a, b) => {
   const yearA = parseInt(a.Year || a.year || 0);
   const yearB = parseInt(b.Year || b.year || 0);
-  
-  const monthA = parseInt(a.Month || a.month || 0);
-  const monthB = parseInt(b.Month || b.month || 0);
+
+  const monthA = monthOrder[String(a.Month || a.month || "").toLowerCase()] || 0;
+  const monthB = monthOrder[String(b.Month || b.month || "").toLowerCase()] || 0;
 
   return yearA !== yearB ? yearA - yearB : monthA - monthB;
 });
@@ -104,10 +109,10 @@ return sortedData.map((d) => {
 
      // ✅ ADD STEP 4 HERE
   const monthMap = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const rawMonth = d.Month || d.month;
-  const monthName = isNaN(rawMonth) 
-    ? String(rawMonth).substring(0,3)
-    : monthMap[parseInt(rawMonth) - 1] || rawMonth;
+  const rawMonth = String(d.Month || d.month || "");
+const monthShort = rawMonth.substring(0,3);
+
+xAxisLabel: `${monthShort} ${d.Year || d.year || ''}`,
    
     // Mapping exact CSV Headers
     const tobaccoVal = n(d['Tobacco Val'] || d.t_val);
