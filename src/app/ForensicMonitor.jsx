@@ -73,17 +73,19 @@ const fetchSheetData = async () => {
   
 // --- 1. THE DATA ENGINE ---
 const processedData = useMemo(() => {
+  if (!data || data.length === 0) return [];
+
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
   const n = (val) => {
-    if (!val || val === "") return 0;
+    if (!val) return 0;
     const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
     return isNaN(parsed) ? 0 : Math.abs(parsed);
   };
 
-  // CLEANING: Strict filter for Entity and Month (Capitalized to match CSV)
+  // CLEANING: Matches "Entity" and "Month" exactly as they appear in your CSV
   const validData = data.filter(d => 
-    d.Entity && d.Entity.trim().length > 1 && 
-    d.Month && !String(d.Month).includes('=')
+    (d.Entity || d.entity) && 
+    (d.Month || d.month)
   );
 
   let invPool = 0; 
@@ -92,48 +94,37 @@ const processedData = useMemo(() => {
   return validData.map((d) => {
     const eff = (100 - wastage) / 100;
     
-    // 1. Mass Balance Math
-    const tKG = n(d['Tobacco Val']) * (units[String(d['Tobacco Unit']).toLowerCase()] || 1);
+    // Mapping exact CSV Headers
+    const tobaccoVal = n(d['Tobacco Val'] || d.t_val);
+    const tobaccoUnit = String(d['Tobacco Unit'] || d.t_unit || 'kg').toLowerCase();
+    const tKG = tobaccoVal * (units[tobaccoUnit] || 1);
+    
     const monthlyCap = (tKG * eff) / 0.0007;
-    const monthlyOut = n(d.Outflow);
+    const monthlyOut = n(d.Outflow || d.outflow);
 
-    // 2. Inventory Decay (2% loss per month)
+    // Forensic Math: Decay & Divergence
     invPool = (invPool * 0.98) + monthlyCap;
     cumOutflow += monthlyOut;
-
-    // 3. Precursor Divergence Index (PDI)
-    const paperVal = n(d['Paper Val']);
-    const pCap = paperVal * 12 * eff; 
-    const pdi = pCap > 0 ? ((monthlyCap - pCap) / monthlyCap) * 100 : 0;
-
-    // 4. Multi-Vector Transit Risk (Mapping your 5 Origin/Dest Columns)
-    const riskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "SEYCHELLES", "CYPRUS"];
-    const routeVectors = [
-      String(d["Tobacco Origin"] || ""),
-      String(d["Tow Origin"] || ""),
-      String(d["Paper Origin"] || ""),
-      String(d["Filter Origin"] || ""),
-      String(d["Destination"] || "")
-    ].map(s => s.toUpperCase());
-
-    const hits = routeVectors.filter(v => riskHubs.some(hub => v.includes(hub))).length;
-    const transitRiskScore = hits > 0 ? (hits * 20) + 15 : 15;
     
-    // Fixes the ReferenceError by defining the flag the UI expects
-    const isAnomalous = (transitRiskScore > 50) || (cumOutflow > invPool) || (Math.abs(pdi) > 25);
+    // Precursor Risk Mapping
+    const riskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "CYPRUS"];
+    const routes = [
+      d['Tobacco Origin'], d['Tow Origin'], d['Paper Origin'], d['Filter Origin'], d['Destination']
+    ].map(v => String(v || "").toUpperCase());
+    
+    const hits = routes.filter(r => riskHubs.some(hub => r.includes(hub))).length;
 
     return {
       ...d,
-      xAxisLabel: `${String(d.Month).substring(0,3)} ${String(d.Year)}`,
+      // This fixes the X-Axis "Difficult Pick"
+      xAxisLabel: `${String(d.Month || d.month).substring(0,3)} ${d.Year || d.year || ''}`,
       tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOutflow),
-      pdi: Math.round(pdi), 
       stampGap: Math.max(0, cumOutflow - invPool),
-      transitRiskScore: Math.min(transitRiskScore, 100),
-      isAnomalous: isAnomalous, // This is what the UI uses to color things red
-      firstDigit: parseInt(String(monthlyOut)[0]) || 0
+      transitRiskScore: (hits * 20) + 15,
+      pdi: Math.round(n(d['Paper Val']) > 0 ? ((monthlyCap - (n(d['Paper Val']) * 12 * eff)) / monthlyCap) * 100 : 0)
     };
   });
 }, [data, wastage]);
@@ -163,8 +154,7 @@ const originAnalysis = useMemo(() => {
   
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
-    if (processedData.length === 0) return [];
-    
+ if (loading) return <div className="p-20 text-center text-emerald-500 animate-pulse">SYNCING INTELLIGENCE...</div>
     const counts = Array(9).fill(0);
     // We only look at rows where the outflow is greater than 0
     const validRows = processedData.filter(d => d.firstDigit > 0);
