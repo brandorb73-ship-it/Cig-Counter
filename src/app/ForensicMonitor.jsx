@@ -74,59 +74,56 @@ const fetchSheetData = async () => {
 // --- 1. THE DATA ENGINE ---
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-  const clean = (val) => {
-    if (!val) return 0;
-    const n = parseFloat(String(val).replace(/[^\d.-]/g, ''));
-    return isNaN(n) ? 0 : Math.abs(n);
+  
+  // Strict cleaning function to prevent NaN
+  const n = (val) => {
+    if (!val || val === "") return 0;
+    const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
+    return isNaN(parsed) ? 0 : Math.abs(parsed);
   };
 
-  // 1. Strict Filter (Stops the "62 Entities" bug)
-  const validData = data.filter(d => d.entity && d.entity.trim().length > 2 && d.month);
+  // 1. Strict Filter: Only rows with an Entity AND a Month
+  const validData = data.filter(d => d.entity && d.entity.length > 2 && d.month);
 
-  let inventoryPool = 0; 
-  let exportTotal = 0;
+  let invPool = 0; 
+  let cumOutflow = 0;
 
-  return validData.map((d, index) => {
+  return validData.map((d) => {
     const eff = (100 - wastage) / 100;
     
-    // Forensic Math
-    const tKG = clean(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
-    const monthlyCapacity = (tKG * eff) / 0.0007;
-    const monthlyOutflow = clean(d.outflow);
+    // Core Forensic Math
+    const tobaccoKG = n(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
+    const monthlyCap = (tobaccoKG * eff) / 0.0007;
+    const monthlyOut = n(d.outflow);
 
-    // Inventory Decay (Assumes 2% loss/degradation per month of unused leaf)
-    inventoryPool = (inventoryPool * 0.98) + monthlyCapacity;
-    exportTotal += monthlyOutflow;
+    // FEATURE: Inventory Decay (2% loss per month on unused stock)
+    invPool = (invPool * 0.98) + monthlyCap;
+    cumOutflow += monthlyOut;
 
-    // Precursor Divergence Index (Comparing Paper vs Tobacco if available)
-    const pCap = clean(d.p_val) * 12 * eff; 
-    const pdi = pCap > 0 ? ((monthlyCapacity - pCap) / monthlyCapacity) : 0;
+    // FEATURE: Precursor Divergence Index (Tobacco vs Paper)
+    const paperCap = n(d.p_val) * 12 * eff; 
+    const pdi = paperCap > 0 ? ((monthlyCap - paperCap) / monthlyCap) * 100 : 0;
 
     return {
       ...d,
-      // FIX: Forced string for X-Axis to stop "formulas"
+      // FIX X-AXIS: Explicitly forced string
       xAxisLabel: `${String(d.month).substring(0,3)} ${String(d.year).slice(-2)}`,
-      tobaccoKG: Math.round(tKG),
-      outflow: Math.round(monthlyOutflow),
-      capacity: Math.round(monthlyCapacity),
-      cumulativeCapacity: Math.round(inventoryPool),
-      cumulativeOutflow: Math.round(exportTotal),
-      pdi: pdi.toFixed(2),
-      // Virtual Stamp Gap: If exports exceed current raw material stock
-      stampGap: Math.max(0, exportTotal - inventoryPool),
-      firstDigit: parseInt(String(monthlyOutflow)[0]) || 0
+      tobaccoKG: Math.round(tobaccoKG),
+      outflow: Math.round(monthlyOut),
+      cumulativeInput: Math.round(invPool),
+      cumulativeOutput: Math.round(cumOutflow),
+      pdi: Math.round(pdi),
+      // FEATURE: Virtual Stamp Gap
+      stampGap: Math.max(0, cumOutflow - invPool),
+      firstDigit: parseInt(String(monthlyOut)[0]) || 0
     };
   });
 }, [data, wastage]);
 
-// --- KPI MATH (Rounded & Non-Negative) ---
+// Top-level KPI variables (Fixed NaN)
 const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
-const totalGhostVolume = Math.round(processedData.reduce((acc, curr) => {
-  // Gap is only "Ghost" if exports > capacity
-  const gap = curr.cumulativeOutput - curr.cumulativeInput;
-  return acc + Math.max(0, gap);
-}, 0));
-const activeEntities = new Set(processedData.map(d => d.entity)).size;
+const totalGhost = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
+const avgPDI = Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / (processedData.length || 1));
   
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
@@ -249,19 +246,14 @@ const activeEntities = new Set(processedData.map(d => d.entity)).size;
   >
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
 {/* Smoking Gun Axis */}
-<XAxis 
-  dataKey="xAxisLabel" 
-  type="category" 
-  stroke="#94a3b8" 
-  fontSize={10} 
-  tick={{fill: '#94a3b8'}}
-/>
+<XAxis dataKey="xAxisLabel" type="category" stroke="#94a3b8" fontSize={10} />
 <YAxis 
+  width={80} 
   stroke="#94a3b8" 
-  fontSize={10} 
   tickFormatter={(v) => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v.toLocaleString()} 
 />
-
+<Area name="Mass Balance Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.1} stroke="#10b981" />
+<Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
 {/* Scatter Plot Axis (Fixes long numbers) */}
 <Area dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
 <Line dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
@@ -298,12 +290,18 @@ const activeEntities = new Set(processedData.map(d => d.entity)).size;
             <div className="h-[250px] w-full">
               <ResponsiveContainer width="100%" height={300}>
 <ScatterChart margin={{ left: 40, bottom: 20 }}>
-  <XAxis 
+ <XAxis 
   type="number" 
   dataKey="tobaccoKG" 
-  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}
+  stroke="#94a3b8" 
+  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} 
 />
-  <YAxis type="number" dataKey="outflow" name="Sticks" stroke="#94a3b8" />
+<YAxis 
+  type="number" 
+  dataKey="outflow" 
+  stroke="#94a3b8" 
+  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} 
+/>
   <Tooltip cursor={{ strokeDasharray: '3 3' }} />
   <Scatter name="Shipments" data={processedData} fill="#3b82f6" />
 </ScatterChart>
