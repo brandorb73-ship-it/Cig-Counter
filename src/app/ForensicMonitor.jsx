@@ -74,16 +74,14 @@ const fetchSheetData = async () => {
 // --- 1. THE DATA ENGINE ---
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-  
-  // Strict cleaning function to prevent NaN
   const n = (val) => {
-    if (!val || val === "") return 0;
+    if (!val) return 0;
     const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
     return isNaN(parsed) ? 0 : Math.abs(parsed);
   };
 
-  // 1. Strict Filter: Only rows with an Entity AND a Month
-  const validData = data.filter(d => d.entity && d.entity.length > 2 && d.month);
+  // 1. Strict Filter (Cleans out the "62 Entities" ghost rows)
+  const validData = data.filter(d => d.entity && d.entity.trim().length > 2 && d.month);
 
   let invPool = 0; 
   let cumOutflow = 0;
@@ -91,39 +89,69 @@ const processedData = useMemo(() => {
   return validData.map((d) => {
     const eff = (100 - wastage) / 100;
     
-    // Core Forensic Math
-    const tobaccoKG = n(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
-    const monthlyCap = (tobaccoKG * eff) / 0.0007;
+    // --- BASIC VOLUMES ---
+    const tKG = n(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
+    const monthlyCap = (tKG * eff) / 0.0007; // 0.7g per stick
     const monthlyOut = n(d.outflow);
 
-    // FEATURE: Inventory Decay (2% loss per month on unused stock)
+    // --- FEATURE: INVENTORY DECAY ---
+    // We assume a 2% monthly loss due to moisture evaporation/handling
     invPool = (invPool * 0.98) + monthlyCap;
     cumOutflow += monthlyOut;
 
-    // FEATURE: Precursor Divergence Index (Tobacco vs Paper)
-    const paperCap = n(d.p_val) * 12 * eff; 
+    // --- FEATURE: PRECURSOR DIVERGENCE (PDI) ---
+    // Comparing Tobacco Capacity vs Paper/Filter Capacity
+    const paperCap = n(d.p_val) * 12 * eff; // Approx 12 sticks per unit of paper
+    const filterCap = n(d.f_val) * 6 * eff; // Approx 6 sticks per filter rod
+    
+    // Divergence measures if they are importing one material but not others
     const pdi = paperCap > 0 ? ((monthlyCap - paperCap) / monthlyCap) * 100 : 0;
+
+    // --- FEATURE: TRANSIT RISK ---
+    const origin = String(d.t_origin || "").toUpperCase();
+    const dest = String(d.dest || "").toUpperCase();
+    const highRiskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "CYPRUS"];
+    const isHighRisk = highRiskHubs.includes(origin) || highRiskHubs.includes(dest);
 
     return {
       ...d,
-      // FIX X-AXIS: Explicitly forced string
       xAxisLabel: `${String(d.month).substring(0,3)} ${String(d.year).slice(-2)}`,
-      tobaccoKG: Math.round(tobaccoKG),
+      tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOutflow),
-      pdi: Math.round(pdi),
-      // FEATURE: Virtual Stamp Gap
+      // NEW PRO METRICS:
+      pdi: Math.round(pdi), 
+      decayLoss: Math.round(invPool * 0.02),
       stampGap: Math.max(0, cumOutflow - invPool),
+      transitRiskScore: isHighRisk ? 85 : 15,
+      // Flagging anomalies
+      isAnomalous: Math.abs(pdi) > 25 || (cumOutflow > invPool),
       firstDigit: parseInt(String(monthlyOut)[0]) || 0
     };
   });
 }, [data, wastage]);
 
 // Top-level KPI variables (Fixed NaN)
+// --- KPI MAPPING (Fixes the ReferenceError) ---
 const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
-const totalGhost = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
+const activeEntities = new Set(processedData.map(d => d.entity)).size;
+
+// We map totalGhostVolume to the Stamp Gap calculation
+const totalGhostVolume = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
+
+// For the Pro Features
 const avgPDI = Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / (processedData.length || 1));
+
+// --- STEP 3: ORIGIN INTELLIGENCE ---
+const originAnalysis = useMemo(() => {
+  const summary = {};
+  processedData.forEach(d => {
+    const org = d.t_origin || "Unknown";
+    summary[org] = (summary[org] || 0) + d.tobaccoKG;
+  });
+  return Object.entries(summary).map(([name, value]) => ({ name, value }));
+}, [processedData]);
   
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
@@ -246,7 +274,13 @@ const avgPDI = Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0)
   >
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
 {/* Smoking Gun Axis */}
-<XAxis dataKey="xAxisLabel" type="category" stroke="#94a3b8" fontSize={10} />
+<XAxis 
+  dataKey="xAxisLabel" 
+  type="category" // <--- CRITICAL: This stops the weird formula guessing
+  stroke="#94a3b8" 
+  fontSize={10} 
+  interval={0} // Shows every month
+/>
 <YAxis 
   width={80} 
   stroke="#94a3b8" 
@@ -290,11 +324,11 @@ const avgPDI = Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0)
             <div className="h-[250px] w-full">
               <ResponsiveContainer width="100%" height={300}>
 <ScatterChart margin={{ left: 40, bottom: 20 }}>
- <XAxis 
+<XAxis 
   type="number" 
   dataKey="tobaccoKG" 
-  stroke="#94a3b8" 
-  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} 
+  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} // 100000 -> 100k
+  stroke="#94a3b8"
 />
 <YAxis 
   type="number" 
