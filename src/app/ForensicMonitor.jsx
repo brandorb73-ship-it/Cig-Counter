@@ -137,21 +137,22 @@ const firstDigit = (() => {
   const str = Math.floor(val).toString();
   return parseInt(str[0], 10);
 })();
-    return {
-    ...d,
-    xAxisLabel: `${monthShort} ${d.Year || d.year || ''}`,
-    firstDigit,   // ✅ Benford's Law check
-    in: Math.round(invPool),    // ✅ The Green Area data
-    out: Math.round(cumOutflow) // ✅ The Red Line data
-};
-  
+return {
+      ...d,
+      // This creates the label for the X-Axis
+      xAxisLabel: `${monthShort} ${d.Year || d.year || ''}`,
+      
+      // These are the values for the Chart Lines
+      in: Math.round(invPool),           // Total legal tobacco available
+      out: Math.round(cumOutflow),       // Total cigarettes exported
+      
+      // Keep your existing forensic keys
       tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOutflow),
       stampGap: Math.max(0, cumOutflow - invPool),
-      transitRiskScore: (hits * 20) + 15,
-      pdi: Math.round(n(d['Paper Val']) > 0 ? ((monthlyCap - (n(d['Paper Val']) * 12 * eff)) / monthlyCap) * 100 : 0)
+      firstDigit: firstDigit
     };
   });
 }, [data, wastage]);
@@ -300,31 +301,29 @@ const originAnalysis = useMemo(() => {
 {/* Smoking Gun Axis */}
 <AreaChart data={processedData}>
   <XAxis 
-    dataKey="xAxisLabel"   // MUST match the key in your logic
-    type="category"        // FORCES text display (No formulas!)
+    dataKey="xAxisLabel"   // Matches the logic above
+    type="category"        // FORCES the name to show, stops the "formula" bug
     stroke="#64748b" 
     fontSize={10} 
-    interval={0} 
+    interval={0}           // Shows every month (Jan, Feb, Mar...)
   />
   <YAxis stroke="#64748b" fontSize={10} />
-  <Tooltip />
   
-  {/* 🟢 The Green Area: Legal Inventory Capacity */}
+  {/* The Green Area: This shows your legal warehouse capacity */}
   <Area 
     type="monotone" 
-    dataKey="in"           // MUST match the key in logic
+    dataKey="in"           // Matches the 'in' we added to logic
     stroke="#10b981" 
     fill="#10b981" 
     fillOpacity={0.1} 
   />
   
-  {/* 🔴 The Red Line: Actual Cumulative Exports */}
+  {/* The Red Line: This shows the actual outflow from the CSV */}
   <Line 
     type="monotone" 
-    dataKey="out"          // MUST match the key in logic
+    dataKey="out"          // Matches the 'out' we added to logic
     stroke="#ef4444" 
     strokeWidth={3} 
-    dot={{ r: 4, fill: '#ef4444' }} 
   />
 </AreaChart>
 <Area name="Mass Balance Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.1} stroke="#10b981" />
