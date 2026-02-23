@@ -80,40 +80,41 @@ const processedData = useMemo(() => {
     return isNaN(n) ? 0 : Math.abs(n);
   };
 
-  // Filter out any row that doesn't have a valid Entity and Month
-  const validData = data.filter(d => d.entity && d.entity.length > 2 && d.month);
+  // 1. Strict Filter (Stops the "62 Entities" bug)
+  const validData = data.filter(d => d.entity && d.entity.trim().length > 2 && d.month);
 
-  let pool = 0; 
-  let actual = 0;
+  let inventoryPool = 0; 
+  let exportTotal = 0;
 
   return validData.map((d, index) => {
     const eff = (100 - wastage) / 100;
     
-    // 1. Bottleneck Analysis
-    const capT = (clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1) * eff) / 0.0007;
-    const capP = (clean(d.p_val) * eff) * 12;
-    const capR = (clean(d.f_val) * eff) * 6;
-    
-    // The Bottleneck is the lowest capacity precursor
-    const theoreticalMax = Math.min(capT || Infinity, capP || Infinity, capR || Infinity);
-    const rowOutflow = clean(d.outflow);
+    // Forensic Math
+    const tKG = clean(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
+    const monthlyCapacity = (tKG * eff) / 0.0007;
+    const monthlyOutflow = clean(d.outflow);
 
-    // 2. Precursor Divergence Index (PDI)
-    // Measures the variance between different raw materials. High variance = Fraud risk.
-    const pdi = capT > 0 ? ((capT - capP) / capT) * 100 : 0;
+    // Inventory Decay (Assumes 2% loss/degradation per month of unused leaf)
+    inventoryPool = (inventoryPool * 0.98) + monthlyCapacity;
+    exportTotal += monthlyOutflow;
 
-    pool += theoreticalMax;
-    actual += rowOutflow;
+    // Precursor Divergence Index (Comparing Paper vs Tobacco if available)
+    const pCap = clean(d.p_val) * 12 * eff; 
+    const pdi = pCap > 0 ? ((monthlyCapacity - pCap) / monthlyCapacity) : 0;
 
     return {
       ...d,
-      chartLabel: `${String(d.month).substring(0,3)} ${String(d.year).slice(-2)}`,
-      tobaccoKG: Math.round(clean(d.t_val)),
-      outflow: Math.round(rowOutflow),
-      cumulativeInput: Math.round(pool),
-      cumulativeOutput: Math.round(actual),
-      pdi: parseFloat(pdi.toFixed(2)),
-      isAnomalous: Math.abs(pdi) > 20 // Flagging 20% divergence
+      // FIX: Forced string for X-Axis to stop "formulas"
+      xAxisLabel: `${String(d.month).substring(0,3)} ${String(d.year).slice(-2)}`,
+      tobaccoKG: Math.round(tKG),
+      outflow: Math.round(monthlyOutflow),
+      capacity: Math.round(monthlyCapacity),
+      cumulativeCapacity: Math.round(inventoryPool),
+      cumulativeOutflow: Math.round(exportTotal),
+      pdi: pdi.toFixed(2),
+      // Virtual Stamp Gap: If exports exceed current raw material stock
+      stampGap: Math.max(0, exportTotal - inventoryPool),
+      firstDigit: parseInt(String(monthlyOutflow)[0]) || 0
     };
   });
 }, [data, wastage]);
@@ -249,10 +250,11 @@ const activeEntities = new Set(processedData.map(d => d.entity)).size;
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
 {/* Smoking Gun Axis */}
 <XAxis 
-  dataKey="chartLabel" 
+  dataKey="xAxisLabel" 
+  type="category" 
   stroke="#94a3b8" 
   fontSize={10} 
-  tickFormatter={(str) => String(str)} // Forces string rendering
+  tick={{fill: '#94a3b8'}}
 />
 <YAxis 
   stroke="#94a3b8" 
@@ -296,7 +298,11 @@ const activeEntities = new Set(processedData.map(d => d.entity)).size;
             <div className="h-[250px] w-full">
               <ResponsiveContainer width="100%" height={300}>
 <ScatterChart margin={{ left: 40, bottom: 20 }}>
-  <XAxis type="number" dataKey="tobaccoKG" name="Tobacco" unit="kg" stroke="#94a3b8" />
+  <XAxis 
+  type="number" 
+  dataKey="tobaccoKG" 
+  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}
+/>
   <YAxis type="number" dataKey="outflow" name="Sticks" stroke="#94a3b8" />
   <Tooltip cursor={{ strokeDasharray: '3 3' }} />
   <Scatter name="Shipments" data={processedData} fill="#3b82f6" />
