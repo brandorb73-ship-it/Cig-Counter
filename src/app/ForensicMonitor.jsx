@@ -87,13 +87,28 @@ const processedData = useMemo(() => {
     (d.Entity || d.entity) && 
     (d.Month || d.month)
   );
+const sortedData = [...validData].sort((a, b) => {
+  const yearA = parseInt(a.Year || a.year || 0);
+  const yearB = parseInt(b.Year || b.year || 0);
+  
+  const monthA = parseInt(a.Month || a.month || 0);
+  const monthB = parseInt(b.Month || b.month || 0);
 
+  return yearA !== yearB ? yearA - yearB : monthA - monthB;
+});
   let invPool = 0; 
   let cumOutflow = 0;
 
-  return validData.map((d) => {
+return sortedData.map((d) => {
     const eff = (100 - wastage) / 100;
-    
+
+     // ✅ ADD STEP 4 HERE
+  const monthMap = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const rawMonth = d.Month || d.month;
+  const monthName = isNaN(rawMonth) 
+    ? String(rawMonth).substring(0,3)
+    : monthMap[parseInt(rawMonth) - 1] || rawMonth;
+   
     // Mapping exact CSV Headers
     const tobaccoVal = n(d['Tobacco Val'] || d.t_val);
     const tobaccoUnit = String(d['Tobacco Unit'] || d.t_unit || 'kg').toLowerCase();
@@ -113,11 +128,17 @@ const processedData = useMemo(() => {
     ].map(v => String(v || "").toUpperCase());
     
     const hits = routes.filter(r => riskHubs.some(hub => r.includes(hub))).length;
-
-    return {
-      ...d,
-      // This fixes the X-Axis "Difficult Pick"
-      xAxisLabel: `${String(d.Month || d.month).substring(0,3)} ${d.Year || d.year || ''}`,
+const firstDigit = (() => {
+  const val = Math.abs(monthlyOut);
+  if (!val || val === 0) return 0;
+  const str = Math.floor(val).toString();
+  return parseInt(str[0], 10);
+})();
+      return {
+    ...d,
+    xAxisLabel: `${monthName} ${d.Year || d.year || ''}`,
+    firstDigit,   // ✅ ADD THIS LINE
+  
       tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
       cumulativeInput: Math.round(invPool),
@@ -154,7 +175,6 @@ const originAnalysis = useMemo(() => {
   
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
- if (loading) return <div className="p-20 text-center text-emerald-500 animate-pulse">SYNCING INTELLIGENCE...</div>
     const counts = Array(9).fill(0);
     // We only look at rows where the outflow is greater than 0
     const validRows = processedData.filter(d => d.firstDigit > 0);
@@ -268,23 +288,34 @@ const originAnalysis = useMemo(() => {
   <ComposedChart 
     data={processedData} 
     margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // Adds space so numbers aren't cut
+    <Tooltip formatter={(value) => value.toLocaleString()} />
   >
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
 {/* Smoking Gun Axis */}
 <XAxis 
-  dataKey="xAxisLabel" 
-  type="category"        // <--- CRITICAL: Tells the app "This is a Name, not Math"
-  stroke="#64748b" 
-  fontSize={10} 
+  dataKey="xAxisLabel"
+  type="category"
+  scale="band"                 // ✅ Forces categorical spacing
+  stroke="#64748b"
+  fontSize={10}
   tickLine={false}
   axisLine={false}
-  interval={0}           // <--- Shows EVERY month name
-  padding={{ left: 10, right: 10 }}
+  interval={0}
+  angle={-30}                  // ✅ Prevent overlap
+  textAnchor="end"
+  height={60}                  // ✅ Prevent clipping
 />
 <YAxis 
-  width={80} 
-  stroke="#94a3b8" 
-  tickFormatter={(v) => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v.toLocaleString()} 
+  width={80}
+  stroke="#94a3b8"
+  tickLine={false}
+  axisLine={false}
+  tickFormatter={(v) => {
+    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+    return v;
+  }}
 />
 <Area name="Mass Balance Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.1} stroke="#10b981" />
 <Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
@@ -308,7 +339,7 @@ const originAnalysis = useMemo(() => {
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
     <XAxis dataKey="digit" stroke="#94a3b8" />
     <YAxis stroke="#94a3b8" unit="%" />
-    <Tooltip />
+    <Tooltip formatter={(value) => `${value}%`} />
     <Bar dataKey="actual" fill="#3b82f6" name="Reported %" radius={[4, 4, 0, 0]} />
     <Line type="step" dataKey="ideal" stroke="#94a3b8" name="Expected %" strokeDasharray="5 5" />
   </BarChart>
@@ -326,17 +357,29 @@ const originAnalysis = useMemo(() => {
 <ScatterChart margin={{ left: 40, bottom: 20 }}>
 <XAxis 
   type="number" 
-  dataKey="tobaccoKG" 
-  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} // 100000 -> 100k
+  dataKey="tobaccoKG"
   stroke="#94a3b8"
+  tickFormatter={(v) => {
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
+    return v;
+  }}
 />
+
 <YAxis 
   type="number" 
-  dataKey="outflow" 
-  stroke="#94a3b8" 
-  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} 
+  dataKey="outflow"
+  stroke="#94a3b8"
+  tickFormatter={(v) => {
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
+    return v;
+  }}
 />
-  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+ <Tooltip 
+  cursor={{ strokeDasharray: '3 3' }}
+  formatter={(value) => value.toLocaleString()}
+/>
   <Scatter name="Shipments" data={processedData} fill="#3b82f6" />
 </ScatterChart>
 </ResponsiveContainer>
