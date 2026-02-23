@@ -47,67 +47,77 @@ const ForensicMonitor = () => {
   try {
     const response = await fetch(sheetUrl);
     const csvText = await response.text();
-    const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-
+    // Split by lines and remove empty rows
+    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== "");
+    
     const formatted = lines.slice(1).map(row => {
+      // Split by comma, but handle potential commas inside quotes if they exist
       const cols = row.split(',').map(c => c.trim());
-      const entry = {};
-      headers.forEach((h, i) => entry[h] = cols[i]);
-
-      const num = (v) => parseFloat(v?.replace(/[$,]/g, '')) || 0;
+      
+      const cleanNum = (val) => {
+        if (!val) return 0;
+        // Removes commas/spaces and converts to float
+        const n = parseFloat(val.replace(/[^\d.-]/g, ''));
+        return isNaN(n) ? 0 : n;
+      };
 
       return {
-        entity: entry.entity,
-        month: entry.month,
-        t_val: num(entry.t_val), t_unit: entry.t_unit,
-        tow_val: num(entry.tow_val), tow_unit: entry.tow_unit,
-        p_val: num(entry.p_val),
-        f_val: num(entry.f_val),
-        outflow: num(entry.outflow),
-        dest: entry.dest
+        entity: cols[0],
+        month: cols[1],
+        year: cols[2],
+        t_val: cleanNum(cols[3]),    // "Tobacco"
+        t_unit: cols[4] || 'KG',      // "Tobacco Unit"
+        tow_val: cleanNum(cols[6]),  // "Tow"
+        tow_unit: cols[7] || 'KG',    // "Tow Unit"
+        p_val: cleanNum(cols[9]),    // "Paper"
+        p_unit: cols[10] || 'M',     // "Paper Unit"
+        f_val: cleanNum(cols[12]),   // "Filter"
+        f_unit: cols[13] || 'PCS',   // "Filter Unit"
+        outflow: cleanNum(cols[15]), // "Outflow"
+        dest: cols[16]               // "Destination"
       };
-    }).filter(r => r.entity);
+    }).filter(r => r.entity && r.entity !== "");
 
     setData(formatted);
-  } catch (e) { console.error("Sync Error:", e); }
+  } catch (error) {
+    console.error("Sync Error:", error);
+  }
 };
-
 const processedData = useMemo(() => {
-  const unitToKG = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-  let theoreticalPool = 0;
-  let cumulativeSticksOut = 0;
+  const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
+  let pool = 0; 
+  let actual = 0;
 
-  return data.map((item) => {
-    // 1. Normalize all precursors to KG
-    const tobaccoKG = item.t_val * (unitToKG[item.t_unit?.toLowerCase()] || 1);
-    const towKG = item.tow_val * (unitToKG[item.tow_unit?.toLowerCase()] || 1);
-    const paperMeters = item.p_val; // Assuming paper is in meters or rolls
-    const rodsCount = item.f_val;   // Assuming rods are raw counts
+  return data.map((d) => {
+    const waste = (100 - wastage) / 100;
 
-    const wasteFactor = (100 - wastage) / 100;
+    // Standard Industry Ratios
+    const kgT = d.t_val * (units[d.t_unit?.toLowerCase()] || 1);
+    const capT = (kgT * waste) / 0.0007; // 0.7g per stick
 
-    // 2. CONVERSION RATIOS (Forensic Standards)
-    // Tobacco: ~0.7g per stick | Tow: ~1kg for 20,000 filters
-    // Paper: ~1 meter for 12 sticks | Rods: 1 rod = 6 filters
-    const yieldT = (tobaccoKG * wasteFactor) / 0.0007;
-    const yieldTow = (towKG * wasteFactor) * 20000;
-    const yieldPaper = (paperMeters * wasteFactor) * 12;
-    const yieldRods = (rodsCount * wasteFactor) * 6;
+    const kgTow = d.tow_val * (units[d.tow_unit?.toLowerCase()] || 1);
+    const capTow = (kgTow * waste) * 20000; // 1kg tow = 20k filters
 
-    // 3. THE LIMITING FACTOR (The lowest number is the true capacity)
-    const theoreticalMax = Math.min(yieldT, yieldTow, yieldPaper, yieldRods);
+    const capPaper = (d.p_val * waste) * 12; // 1m paper = 12 sticks
+    const capRods = (d.f_val * waste) * 6;   // 1 rod = 6 filters
+
+    // Capacity is limited by the scarcest resource
+    // If a row has 0 for a precursor, we use only the available ones
+    const capacities = [capT, capTow, capPaper, capRods].filter(v => v > 0);
+    const theoreticalMax = capacities.length > 0 ? Math.min(...capacities) : 0;
     
-    theoreticalPool += theoreticalMax;
-    cumulativeSticksOut += item.outflow;
+    pool += theoreticalMax;
+    actual += d.outflow;
 
     return {
-      ...item,
-      tobaccoKG,
+      ...d,
+      tobaccoKG: kgT,
       theoreticalMax,
-      cumulativeInput: theoreticalPool,
-      cumulativeOutput: cumulativeSticksOut,
-      priceIndex: tobaccoKG > 0 ? (item.outflow / tobaccoKG) : 0
+      cumulativeInput: pool,
+      cumulativeOutput: actual,
+      // For Benford's Law chart
+      firstDigit: parseInt(d.outflow.toString()[0]) || 0,
+      priceIndex: kgT > 0 ? (d.outflow / kgT) : 0
     };
   });
 }, [data, wastage]);
