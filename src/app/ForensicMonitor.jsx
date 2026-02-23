@@ -288,9 +288,9 @@ const originAnalysis = useMemo(() => {
   <ComposedChart 
     data={processedData} 
     margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // Adds space so numbers aren't cut
-    <Tooltip formatter={(value) => value.toLocaleString()} />
   >
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+    <Tooltip formatter={(value) => value.toLocaleString()} />  {/* ✅ CORRECT */}
 {/* Smoking Gun Axis */}
 <XAxis 
   dataKey="xAxisLabel"
