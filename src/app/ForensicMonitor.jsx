@@ -83,90 +83,68 @@ const ForensicMonitor = () => {
     console.error("Sync Error:", error);
   }
 };
-const processedData = useMemo(() => {
-    // --- THE NAN FIX HELPER ---
+// --- 1. THE DATA ENGINE ---
+  const processedData = useMemo(() => {
+    // Standard weight conversion map
+    const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
+    
+    // Helper to turn empty/bad text into 0
     const cleanNum = (val) => {
       if (val === null || val === undefined || val === '') return 0;
       const parsed = parseFloat(val);
       return isNaN(parsed) ? 0 : parsed;
     };
 
-    const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-    let pool = 0; 
-    let actual = 0;
+    let runningPool = 0; 
+    let runningActual = 0;
 
     return data.map((d) => {
-      // Apply the fix to every numeric field
+      // A. Clean inputs
       const tVal = cleanNum(d.t_val);
       const towVal = cleanNum(d.tow_val);
       const pVal = cleanNum(d.p_val);
       const fVal = cleanNum(d.f_val);
-      const outflow = cleanNum(d.outflow);
+      const rowOutflow = cleanNum(d.outflow);
 
-      const waste = (100 - wastage) / 100;
+      // B. Conversion Math (using the 'wastage' state)
+      const currentWasteFactor = (100 - wastage) / 100;
 
-      // Forensic Ratios
-      const kgT = tVal * (units[d.t_unit?.toLowerCase()] || 1);
-      const capT = (kgT * waste) / 0.0007;
+      const capT = (tVal * (units[d.t_unit?.toLowerCase()] || 1) * currentWasteFactor) / 0.0007;
+      const capTow = (towVal * (units[d.tow_unit?.toLowerCase()] || 1) * currentWasteFactor) * 20000;
+      const capPaper = (pVal * currentWasteFactor) * 12;
+      const capRods = (fVal * currentWasteFactor) * 6;
 
-      const kgTow = towVal * (units[d.tow_unit?.toLowerCase()] || 1);
-      const capTow = (kgTow * waste) * 20000;
-
-      const capPaper = (pVal * waste) * 12;
-      const capRods = (fVal * waste) * 6;
-
-      // Identify the limiting precursor
-      const caps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
-      const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
+      // C. Limiting Factor (Logic: A factory can't produce more than its scarcest ingredient allows)
+      const potentialCaps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
+      const theoreticalMax = potentialCaps.length > 0 ? Math.min(...potentialCaps) : 0;
       
-      pool += theoreticalMax;
-      actual += outflow;
+      runningPool += theoreticalMax;
+      runningActual += rowOutflow;
 
-      // 1. CLEAN THE DATA FIRST
-      const tVal = cleanNum(d.t_val);
-      const towVal = cleanNum(d.tow_val);
-      const pVal = cleanNum(d.p_val);
-      const fVal = cleanNum(d.f_val);
-      const outflow = cleanNum(d.outflow);
-
-      const waste = (100 - wastage) / 100;
-
-      // 2. RUN CALCULATIONS
-      const kgT = tVal * (units[d.t_unit?.toLowerCase()] || 1);
-      const capT = (kgT * waste) / 0.0007;
-
-      const kgTow = towVal * (units[d.tow_unit?.toLowerCase()] || 1);
-      const capTow = (kgTow * waste) * 20000;
-
-      const capPaper = (pVal * waste) * 12;
-      const capRods = (fVal * waste) * 6;
-
-      const caps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
-      const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
-      
-      pool += theoreticalMax;
-      actual += outflow;
       return {
         ...d,
-        tobaccoKG: kgT,
-        outflow: outflow, // Ensuring outflow is a clean number for Benford
+        outflow: rowOutflow,
         theoreticalMax,
-        cumulativeInput: pool,
-        cumulativeOutput: actual,
-        firstDigit: parseInt(outflow.toString()[0]) || 0,
-        priceIndex: kgT > 0 ? (outflow / kgT) : 0
+        cumulativeInput: runningPool,
+        cumulativeOutput: runningActual,
+        // First digit for the Benford Detector
+        firstDigit: parseInt(rowOutflow.toString()[0]) || 0,
+        priceIndex: tVal > 0 ? (rowOutflow / tVal) : 0
       };
     });
   }, [data, wastage]);
 
+  // --- 2. THE SNAPSHOT MATH (Fixes the NaN boxes) ---
   const totalOutflow = processedData.reduce((acc, curr) => acc + curr.outflow, 0);
   
   const totalGhostVolume = processedData.reduce((acc, curr) => {
-    const ghost = curr.cumulativeOutput - curr.cumulativeInput;
-    return acc + Math.max(0, ghost);
+    // Ghost volume is the excess of exports over legal capacity
+    const gap = curr.cumulativeOutput - curr.cumulativeInput;
+    return acc + Math.max(0, gap);
   }, 0);
 
   const activeEntities = new Set(processedData.map(d => d.entity)).size;
+
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
     if (processedData.length === 0) return [];
