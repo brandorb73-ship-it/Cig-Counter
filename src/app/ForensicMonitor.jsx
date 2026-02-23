@@ -72,6 +72,7 @@ const fetchSheetData = async () => {
 };
   
 // --- 1. THE DATA ENGINE (Calculates everything in one pass) ---
+// --- 1. THE DATA ENGINE ---
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
   const n = (val) => {
@@ -80,50 +81,58 @@ const processedData = useMemo(() => {
     return isNaN(parsed) ? 0 : Math.abs(parsed);
   };
 
-  // Filter out the "62 Entities" bug (Ghost rows)
-  const validData = data.filter(d => d.entity && d.entity.trim().length > 2 && d.month);
+  // CLEANING: This line kills the "16 Entities" bug by ignoring any row without a valid Month
+  const validData = data.filter(d => 
+    d.entity && 
+    d.entity.trim().length > 2 && 
+    d.month && 
+    d.month.trim() !== ""
+  );
 
   let invPool = 0; 
   let cumOutflow = 0;
 
   return validData.map((d) => {
     const eff = (100 - wastage) / 100;
-    
-    // Core Volumes
     const tKG = n(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
     const monthlyCap = (tKG * eff) / 0.0007;
     const monthlyOut = n(d.outflow);
 
-    // FEATURE: INVENTORY DECAY (2% loss/month)
+    // Forensic Metrics: Inventory Decay & Divergence
     invPool = (invPool * 0.98) + monthlyCap;
     cumOutflow += monthlyOut;
+    const pCap = n(d.p_val) * 12 * eff; 
+    const pdi = pCap > 0 ? ((monthlyCap - pCap) / monthlyCap) * 100 : 0;
 
-    // FEATURE: PRECURSOR DIVERGENCE (Tobacco vs Paper)
-    const paperCap = n(d.p_val) * 12 * eff; 
-    const pdi = paperCap > 0 ? ((monthlyCap - paperCap) / monthlyCap) * 100 : 0;
-
-    // FEATURE: TRANSIT RISK (Origin/Destination Check)
-    const origin = String(d.t_origin || d.tobaccoOrigin || "").toUpperCase();
-    const dest = String(d.dest || d.destination || "").toUpperCase();
-    const highRiskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "CYPRUS"];
-    const isHighRisk = highRiskHubs.includes(origin) || highRiskHubs.includes(dest);
+    // Transit Risk Logic
+    const hubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "CYPRUS"];
+    const isRisk = hubs.includes(String(d.t_origin || d.tobaccoOrigin).toUpperCase()) || 
+                   hubs.includes(String(d.dest || d.destination).toUpperCase());
 
     return {
       ...d,
-      xAxisLabel: `${String(d.month).substring(0,3)} ${String(d.year).slice(-2)}`,
+      // THIS KEY FIXES THE X-AXIS
+      xAxisLabel: `${String(d.month).trim().substring(0,3)} ${String(d.year).trim()}`,
       tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOutflow),
       pdi: Math.round(pdi), 
       stampGap: Math.max(0, cumOutflow - invPool),
-      transitRiskScore: isHighRisk ? 85 : 15,
+      transitRiskScore: isRisk ? 85 : 15,
       isAnomalous: Math.abs(pdi) > 25 || (cumOutflow > invPool),
       firstDigit: parseInt(String(monthlyOut)[0]) || 0
     };
   });
 }, [data, wastage]);
 
+// --- 2. KPI CALCULATIONS ---
+const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
+const totalGhostVolume = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
+const activeEntities = new Set(processedData.map(d => d.entity)).size; 
+const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / processedData.length) : 0;
+// ^ Should now show 1
+  
 // --- 2. THE ANALYTICS HELPERS (Derived from ProcessedData) ---
 const riskAnomalies = useMemo(() => {
   return processedData
@@ -140,12 +149,6 @@ const originAnalysis = useMemo(() => {
   });
   return Object.entries(summary).map(([name, value]) => ({ name, value }));
 }, [processedData]);
-
-// --- 3. THE KPI BOXES (What the visual dashboard sees) ---
-const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
-const totalGhostVolume = Math.round(processedData[processedData.length - 1]?.stampGap || 0);
-const activeEntities = new Set(processedData.map(d => d.entity)).size;
-const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / processedData.length) : 0;
   
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
@@ -270,10 +273,10 @@ const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((acc, 
 {/* Smoking Gun Axis */}
 <XAxis 
   dataKey="xAxisLabel" 
-  type="category" // <--- CRITICAL: This stops the weird formula guessing
+  type="category"  // <--- THIS STOPS THE FORMULA ISSUE
   stroke="#94a3b8" 
   fontSize={10} 
-  interval={0} // Shows every month
+  tick={{fill: '#94a3b8'}}
 />
 <YAxis 
   width={80} 
@@ -338,7 +341,96 @@ const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((acc, 
           </div>
         </div>
       </div>
+{/* 📍 ADD THE RISK MONITOR TABLE RIGHT HERE */}
+    <div className="mt-8 bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xl font-bold text-white">Forensic Risk Monitor</h3>
+        <span className="text-xs font-mono text-slate-500 uppercase tracking-widest">
+          Continuous Audit Mode
+        </span>
+      </div>
+      
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="text-slate-400 border-b border-slate-800 text-xs uppercase">
+              <th className="pb-3">Reporting Period</th>
+              <th className="pb-3 text-center">Precursor Divergence</th>
+              <th className="pb-3 text-center">Transit Risk Score</th>
+              <th className="pb-3 text-right">Virtual Stamp Gap</th>
+            </tr>
+          </thead>
+          <tbody className="text-slate-300">
+            {processedData.map((row, i) => (
+              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                <td className="py-4 font-medium">{row.xAxisLabel}</td>
+                <td className="py-4 text-center">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${Math.abs(row.pdi) > 25 ? 'bg-orange-950 text-orange-400' : 'bg-slate-800 text-slate-400'}`}>
+                    {row.pdi}% {Math.abs(row.pdi) > 25 ? '⚠️' : ''}
+                  </span>
+                </td>
+                <td className="py-4">
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-20 bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${row.transitRiskScore > 50 ? 'bg-red-500' : 'bg-blue-500'}`} 
+                        style={{ width: `${row.transitRiskScore}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-mono">{row.transitRiskScore}</span>
+                  </div>
+                </td>
+                <td className="py-4 text-right font-mono">
+                  {row.stampGap > 0 ? (
+                    <span className="text-red-500">+{row.stampGap.toLocaleString()}</span>
+                  ) : (
+                    <span className="text-emerald-500">MATCHED</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
 
+    {/* 📍 ADD THE ORIGIN/DESTINATION INTELLIGENCE TILES BELOW THE TABLE */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+      <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
+        <h4 className="text-xs font-bold text-slate-500 uppercase mb-4">Origin Intelligence (Precursor Mass)</h4>
+        <div className="space-y-3">
+          {originAnalysis.map((item, i) => (
+            <div key={i} className="flex justify-between items-center">
+              <span className="text-sm text-slate-300">{item.name}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-slate-500">{Math.round(item.value).toLocaleString()} kg</span>
+                <div className="w-32 bg-slate-800 h-1 rounded-full">
+                  <div className="bg-blue-500 h-full" style={{ width: `${(item.value / processedData[0].tobaccoKG) * 100}%` }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
+        <h4 className="text-xs font-bold text-slate-500 uppercase mb-4">System Health & Decay</h4>
+        <div className="space-y-4 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Inventory Degradation Rate</span>
+            <span className="text-orange-500">2% / Month</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">PDI Threshold</span>
+            <span className="text-slate-300">+/- 25%</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Total Precursor Divergence</span>
+            <span className={avgPDI > 25 ? "text-red-500" : "text-emerald-500"}>{avgPDI}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
     </div> // Closes the main return div
   );
 }; // Closes the ForensicMonitor function
