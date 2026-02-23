@@ -75,74 +75,74 @@ const fetchSheetData = async () => {
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
   const n = (val) => {
-    if (!val) return 0;
+    if (!val || val === "") return 0;
     const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
     return isNaN(parsed) ? 0 : Math.abs(parsed);
   };
 
-  // CLEANING: This line kills the "16 Entities" bug by ignoring any row without a valid Month
-const validData = data.filter(d => 
-  d.entity && 
-  d.entity.trim().length > 1 && 
-  d.month && 
-  d.month.trim() !== "" &&
-  !d.month.includes('=') // Kills formula ghost rows
-);
+  // CLEANING: Strict filter for Entity and Month (Capitalized to match CSV)
+  const validData = data.filter(d => 
+    d.Entity && d.Entity.trim().length > 1 && 
+    d.Month && !String(d.Month).includes('=')
+  );
 
   let invPool = 0; 
   let cumOutflow = 0;
 
   return validData.map((d) => {
     const eff = (100 - wastage) / 100;
-    const tKG = n(d.t_val) * (units[String(d.t_unit).toLowerCase()] || 1);
+    
+    // 1. Mass Balance Math
+    const tKG = n(d['Tobacco Val']) * (units[String(d['Tobacco Unit']).toLowerCase()] || 1);
     const monthlyCap = (tKG * eff) / 0.0007;
-    const monthlyOut = n(d.outflow);
+    const monthlyOut = n(d.Outflow);
 
-    // Forensic Metrics: Inventory Decay & Divergence
+    // 2. Inventory Decay (2% loss per month)
     invPool = (invPool * 0.98) + monthlyCap;
     cumOutflow += monthlyOut;
-    const pCap = n(d.p_val) * 12 * eff; 
+
+    // 3. Precursor Divergence Index (PDI)
+    const paperVal = n(d['Paper Val']);
+    const pCap = paperVal * 12 * eff; 
     const pdi = pCap > 0 ? ((monthlyCap - pCap) / monthlyCap) * 100 : 0;
 
-// MULTI-ORIGIN RISK SCAN
-const riskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "SEYCHELLES", "CYPRUS"];
-const allRoutes = [
-  String(d["Tobacco Origin"] || ""),
-  String(d["Tow Origin"] || ""),
-  String(d["Paper Origin"] || ""),
-  String(d["Filter Origin"] || ""),
-  String(d["Destination"] || "")
-].map(s => s.toUpperCase());
+    // 4. Multi-Vector Transit Risk (Mapping your 5 Origin/Dest Columns)
+    const riskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "SEYCHELLES", "CYPRUS"];
+    const routeVectors = [
+      String(d["Tobacco Origin"] || ""),
+      String(d["Tow Origin"] || ""),
+      String(d["Paper Origin"] || ""),
+      String(d["Filter Origin"] || ""),
+      String(d["Destination"] || "")
+    ].map(s => s.toUpperCase());
 
-// Count how many precursors are coming from high-risk zones
-const riskCount = allRoutes.filter(route => riskHubs.some(hub => route.includes(hub))).length;
-const transitRiskScore = riskCount > 0 ? (riskCount * 20) + 20 : 15;;
+    const hits = routeVectors.filter(v => riskHubs.some(hub => v.includes(hub))).length;
+    const transitRiskScore = hits > 0 ? (hits * 20) + 15 : 15;
+    
+    // Fixes the ReferenceError by defining the flag the UI expects
+    const isAnomalous = (transitRiskScore > 50) || (cumOutflow > invPool) || (Math.abs(pdi) > 25);
 
     return {
       ...d,
-      // THIS KEY FIXES THE X-AXIS
-      xAxisLabel: `${String(d.month).trim().substring(0,3)} ${String(d.year).trim()}`,
+      xAxisLabel: `${String(d.Month).substring(0,3)} ${String(d.Year)}`,
       tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOutflow),
       pdi: Math.round(pdi), 
       stampGap: Math.max(0, cumOutflow - invPool),
-      transitRiskScore: isRisk ? 85 : 15,
-      isAnomalous: Math.abs(pdi) > 25 || (cumOutflow > invPool),
+      transitRiskScore: Math.min(transitRiskScore, 100),
+      isAnomalous: isAnomalous, // This is what the UI uses to color things red
       firstDigit: parseInt(String(monthlyOut)[0]) || 0
     };
   });
 }, [data, wastage]);
 
-// --- 2. KPI CALCULATIONS ---
+// Define KPI variables immediately after the loop
 const totalOutflow = processedData.reduce((acc, curr) => acc + curr.outflow, 0);
 const totalGhostVolume = processedData[processedData.length - 1]?.stampGap || 0;
-const activeEntities = new Set(processedData.map(d => d.entity)).size;
-const avgPDI = processedData.length > 0 
-  ? Math.round(processedData.reduce((acc, curr) => acc + curr.pdi, 0) / processedData.length) 
-  : 0;
-// ^ Should now show 1
+const activeEntities = new Set(processedData.map(d => d.Entity)).size;
+const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((a, b) => a + b.pdi, 0) / processedData.length) : 0;
   
 // --- 2. THE ANALYTICS HELPERS (Derived from ProcessedData) ---
 const riskAnomalies = useMemo(() => {
