@@ -80,32 +80,41 @@ const processedData = useMemo(() => {
     return isNaN(n) ? 0 : Math.abs(n);
   };
 
+  // Filter out any row that doesn't have a valid Entity and Month
+  const validData = data.filter(d => d.entity && d.entity.length > 2 && d.month);
+
   let pool = 0; 
   let actual = 0;
 
-return data.map((d) => {
-  const eff = (100 - wastage) / 100;
-  const tKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
-  const capT = (tKG * eff) / 0.0007;
-  const rowOutflow = clean(d.outflow);
+  return validData.map((d, index) => {
+    const eff = (100 - wastage) / 100;
+    
+    // 1. Bottleneck Analysis
+    const capT = (clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1) * eff) / 0.0007;
+    const capP = (clean(d.p_val) * eff) * 12;
+    const capR = (clean(d.f_val) * eff) * 6;
+    
+    // The Bottleneck is the lowest capacity precursor
+    const theoreticalMax = Math.min(capT || Infinity, capP || Infinity, capR || Infinity);
+    const rowOutflow = clean(d.outflow);
 
-  pool += capT;
-  actual += rowOutflow;
+    // 2. Precursor Divergence Index (PDI)
+    // Measures the variance between different raw materials. High variance = Fraud risk.
+    const pdi = capT > 0 ? ((capT - capP) / capT) * 100 : 0;
 
-  // --- SAFE LABEL LOGIC ---
-  // If month exists, take first 3 letters. If not, use an empty string.
-  const monthSafe = d.month ? String(d.month).substring(0, 3) : "??";
-  const yearSafe = d.year ? String(d.year) : "";
+    pool += theoreticalMax;
+    actual += rowOutflow;
 
-  return {
-    ...d,
-    chartLabel: `${monthSafe} ${yearSafe}`.trim(), 
-    tobaccoKG: Math.round(tKG),
-    outflow: Math.round(rowOutflow),
-    cumulativeInput: Math.round(pool),
-    cumulativeOutput: Math.round(actual),
-    firstDigit: parseInt(rowOutflow.toString()[0]) || 0
-  };
+    return {
+      ...d,
+      chartLabel: `${String(d.month).substring(0,3)} ${String(d.year).slice(-2)}`,
+      tobaccoKG: Math.round(clean(d.t_val)),
+      outflow: Math.round(rowOutflow),
+      cumulativeInput: Math.round(pool),
+      cumulativeOutput: Math.round(actual),
+      pdi: parseFloat(pdi.toFixed(2)),
+      isAnomalous: Math.abs(pdi) > 20 // Flagging 20% divergence
+    };
   });
 }, [data, wastage]);
 
@@ -238,13 +247,20 @@ const activeEntities = new Set(processedData.map(d => d.entity)).size;
     margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // Adds space so numbers aren't cut
   >
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-   <XAxis dataKey="chartLabel" stroke="#94a3b8" fontSize={10} />
+{/* Smoking Gun Axis */}
+<XAxis 
+  dataKey="chartLabel" 
+  stroke="#94a3b8" 
+  fontSize={10} 
+  tickFormatter={(str) => String(str)} // Forces string rendering
+/>
 <YAxis 
-  width={80} 
   stroke="#94a3b8" 
   fontSize={10} 
   tickFormatter={(v) => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v.toLocaleString()} 
 />
+
+{/* Scatter Plot Axis (Fixes long numbers) */}
 <Area dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
 <Line dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
   </ComposedChart>
