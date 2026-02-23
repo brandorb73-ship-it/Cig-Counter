@@ -47,92 +47,89 @@ const ForensicMonitor = () => {
   try {
     const response = await fetch(sheetUrl);
     const csvText = await response.text();
-    // Split by lines and remove empty rows
-    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== "");
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
     
+    // 1. Capture exact column names from the first row
+    const headers = lines[0].split(',').map(h => h.trim());
+
     const formatted = lines.slice(1).map(row => {
-      // Split by comma, but handle potential commas inside quotes if they exist
       const cols = row.split(',').map(c => c.trim());
-      
-      const cleanNum = (val) => {
-        if (!val) return 0;
-        // Removes commas/spaces and converts to float
-        const n = parseFloat(val.replace(/[^\d.-]/g, ''));
-        return isNaN(n) ? 0 : n;
-      };
+      const entry = {};
+      // Map data to headers: entry['Tobacco'] = '173250'
+      headers.forEach((header, index) => {
+        entry[header] = cols[index];
+      });
 
       return {
-        entity: cols[0],
-        month: cols[1],
-        year: cols[2],
-        t_val: cleanNum(cols[3]),    // "Tobacco"
-        t_unit: cols[4] || 'KG',      // "Tobacco Unit"
-        tow_val: cleanNum(cols[6]),  // "Tow"
-        tow_unit: cols[7] || 'KG',    // "Tow Unit"
-        p_val: cleanNum(cols[9]),    // "Paper"
-        p_unit: cols[10] || 'M',     // "Paper Unit"
-        f_val: cleanNum(cols[12]),   // "Filter"
-        f_unit: cols[13] || 'PCS',   // "Filter Unit"
-        outflow: cleanNum(cols[15]), // "Outflow"
-        dest: cols[16]               // "Destination"
+        entity: entry['Entity'],
+        month: entry['Month'],
+        year: entry['Year'],
+        t_val: entry['Tobacco'],
+        t_unit: entry['Tobacco Unit'],
+        tow_val: entry['Tow'],
+        tow_unit: entry['Tow Unit'],
+        p_val: entry['Paper'],
+        f_val: entry['Filter'],
+        outflow: entry['Outflow'],
+        dest: entry['Destination']
       };
-    }).filter(r => r.entity && r.entity !== "");
+    }).filter(r => r.entity && r.entity.length > 1);
 
     setData(formatted);
   } catch (error) {
-    console.error("Sync Error:", error);
+    console.error("Data Sync Failed:", error);
   }
 };
+  
 // --- 1. THE DATA ENGINE ---
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-  const cleanNum = (val) => {
-    if (!val) return 0;
-    const n = parseFloat(val.toString().replace(/[^\d.-]/g, ''));
+  const clean = (val) => {
+    const n = parseFloat(String(val).replace(/[^\d.-]/g, ''));
     return isNaN(n) ? 0 : n;
   };
 
   let pool = 0; 
   let actual = 0;
 
-  // 1. Filter out empty rows to fix the "73 Entities" bug
-  const validData = data.filter(d => d.entity && d.entity.trim() !== "");
+  return data.map((d) => {
+    const efficiency = (100 - wastage) / 100;
 
-  return validData.map((d) => {
-    const currentWaste = (100 - wastage) / 100;
+    // Conversions
+    const tobaccoKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
+    const capT = (tobaccoKG * efficiency) / 0.0007;
+    const capTow = (clean(d.tow_val) * efficiency) * 20000;
+    const capPaper = (clean(d.p_val) * efficiency) * 12;
+    const capRods = (clean(d.f_val) * efficiency) * 6;
 
-    // Convert all precursors to Stick Capacity
-    const capT = (d.t_val * (units[d.t_unit?.toLowerCase()] || 1) * currentWaste) / 0.0007;
-    const capTow = (d.tow_val * (units[d.tow_unit?.toLowerCase()] || 1) * currentWaste) * 20000;
-    const capPaper = (d.p_val * currentWaste) * 12;
-    const capRods = (d.f_val * currentWaste) * 6;
-
-    // Find the bottleneck
+    // The Bottleneck Logic
     const caps = [capT, capTow, capPaper, capRods].filter(v => v > 0);
     const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
     
+    const rowOutflow = clean(d.outflow);
     pool += theoreticalMax;
-    actual += d.outflow;
+    actual += rowOutflow;
 
     return {
       ...d,
-      displayLabel: `${d.month} ${d.year}`, // Fixes the X-Axis "weird descriptions"
+      // Clean labels for X-Axis (e.g., "Dec 2025")
+      displayLabel: `${d.month?.substring(0,3)} ${d.year}`,
+      tobaccoKG: Math.round(tobaccoKG),
+      outflow: Math.round(rowOutflow),
       theoreticalMax: Math.round(theoreticalMax),
       cumulativeInput: Math.round(pool),
       cumulativeOutput: Math.round(actual),
-      firstDigit: parseInt(d.outflow.toString()[0]) || 0,
-      priceIndex: d.t_val > 0 ? (d.outflow / d.t_val) : 0
+      firstDigit: parseInt(rowOutflow.toString()[0]) || 0
     };
   });
 }, [data, wastage]);
 
-// --- KPI MATH (Removing Decimals) ---
+// Final Rounding for the Snapshot Boxes
 const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
 const totalGhostVolume = Math.round(processedData.reduce((acc, curr) => {
   const gap = curr.cumulativeOutput - curr.cumulativeInput;
   return acc + Math.max(0, gap);
 }, 0));
-const activeEntities = new Set(processedData.map(d => d.entity)).size;
 
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
