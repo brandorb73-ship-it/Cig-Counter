@@ -105,14 +105,12 @@ const monthOrder = {
   let cumOutflow = 0;
 
 return sortedData.map((d) => {
-    const eff = (100 - wastage) / 100;
+const eff = (100 - wastage) / 100;
 
      // ✅ ADD STEP 4 HERE
   const monthMap = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const rawMonth = String(d.Month || d.month || "");
 const monthShort = rawMonth.substring(0,3);
-
-xAxisLabel: `${monthShort} ${d.Year || d.year || ''}`,
    
     // Mapping exact CSV Headers
     const tobaccoVal = n(d['Tobacco Val'] || d.t_val);
@@ -141,7 +139,7 @@ const firstDigit = (() => {
 })();
       return {
     ...d,
-    xAxisLabel: `${monthName} ${d.Year || d.year || ''}`,
+    xAxisLabel: `${monthShort} ${d.Year || d.year || ''}`,
     firstDigit,   // ✅ ADD THIS LINE
   
       tobaccoKG: Math.round(tKG),
