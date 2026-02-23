@@ -64,7 +64,8 @@ const fetchSheetData = async () => {
         f_val: cols[12],   // Filter
         outflow: cols[15], // Outflow
       };
-    }).filter(r => r.entity && r.entity.length > 3); // STOPS THE 71 ENTITIES BUG
+    // Change your filter to this:
+}).filter(r => r.entity && r.entity.trim().length > 1 && r.month);
 
     setData(formatted);
   } catch (e) { console.error(e); }
@@ -82,27 +83,29 @@ const processedData = useMemo(() => {
   let pool = 0; 
   let actual = 0;
 
-  return data.map((d) => {
-    const eff = (100 - wastage) / 100;
-    const tKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
-    
-    // 0.7g per stick is the forensic standard
-    const capT = (tKG * eff) / 0.0007;
-    const rowOutflow = clean(d.outflow);
+return data.map((d) => {
+  const eff = (100 - wastage) / 100;
+  const tKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
+  const capT = (tKG * eff) / 0.0007;
+  const rowOutflow = clean(d.outflow);
 
-    pool += capT;
-    actual += rowOutflow;
+  pool += capT;
+  actual += rowOutflow;
 
-    return {
-      ...d,
-      // This is the key for your X-Axis
-      chartLabel: `${d.month.substring(0,3)} ${d.year}`, 
-      tobaccoKG: Math.round(tKG),
-      outflow: Math.round(rowOutflow),
-      cumulativeInput: Math.round(pool),
-      cumulativeOutput: Math.round(actual),
-      firstDigit: parseInt(rowOutflow.toString()[0]) || 0
-    };
+  // --- SAFE LABEL LOGIC ---
+  // If month exists, take first 3 letters. If not, use an empty string.
+  const monthSafe = d.month ? String(d.month).substring(0, 3) : "??";
+  const yearSafe = d.year ? String(d.year) : "";
+
+  return {
+    ...d,
+    chartLabel: `${monthSafe} ${yearSafe}`.trim(), 
+    tobaccoKG: Math.round(tKG),
+    outflow: Math.round(rowOutflow),
+    cumulativeInput: Math.round(pool),
+    cumulativeOutput: Math.round(actual),
+    firstDigit: parseInt(rowOutflow.toString()[0]) || 0
+  };
   });
 }, [data, wastage]);
 
