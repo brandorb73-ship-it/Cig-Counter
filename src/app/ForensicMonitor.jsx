@@ -49,40 +49,28 @@ const fetchSheetData = async () => {
     const csvText = await response.text();
     const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
     
-    // Clean headers: lowercase, remove quotes, remove hidden characters
-    const headers = lines[0].split(',').map(h => 
-      h.trim().toLowerCase().replace(/['"“”\ufeff]/g, '')
-    );
-
+    // We skip the first line (headers) and map by index
     const formatted = lines.slice(1).map(row => {
-      // Handle commas inside quotes if they exist
       const cols = row.split(',').map(c => c.trim());
-      const entry = {};
-      headers.forEach((h, i) => entry[h] = cols[i]);
-
-      // HELPER: Finds a value even if the header name is slightly off
-      const getVal = (possibleNames) => {
-        const foundKey = headers.find(h => possibleNames.includes(h));
-        return entry[foundKey] || "";
-      };
-
+      
       return {
-        // Mapping CSV column names to code variables
-        entity: getVal(['entity', 'company', 'name']),
-        month: getVal(['month']),
-        year: getVal(['year']),
-        t_val: getVal(['tobacco', 'tobacco weight']),
-        t_unit: getVal(['tobacco unit']),
-        tow_val: getVal(['tow', 'acetate tow']),
-        p_val: getVal(['paper', 'cigarette paper']),
-        f_val: getVal(['filter', 'filter rods']),
-        outflow: getVal(['outflow', 'sticks', 'export']),
+        entity: cols[0],   // Column A
+        month: cols[1],    // Column B
+        year: cols[2],     // Column C
+        t_val: cols[3],    // Column D
+        t_unit: cols[4],   // Column E
+        tow_val: cols[6],  // Column G
+        tow_unit: cols[7], // Column H
+        p_val: cols[9],    // Column J
+        f_val: cols[12],   // Column M
+        outflow: cols[15], // Column P
+        dest: cols[16]     // Column Q
       };
-    }).filter(r => r.entity && r.entity.length > 2); // Drops empty rows at bottom
+    }).filter(r => r.entity && r.entity.length > 2); // This fixes the "73 entities" bug
 
     setData(formatted);
   } catch (e) {
-    console.error("Connection failed:", e);
+    console.error("Fetch failed:", e);
   }
 };
   
@@ -90,7 +78,7 @@ const fetchSheetData = async () => {
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
   const clean = (val) => {
-    if (!val || val === "0") return 0;
+    if (!val) return 0;
     const n = parseFloat(String(val).replace(/[^\d.-]/g, ''));
     return isNaN(n) ? 0 : Math.abs(n);
   };
@@ -99,17 +87,15 @@ const processedData = useMemo(() => {
   let actual = 0;
 
   return data.map((d) => {
-    const eff = (100 - wastage) / 100;
+    const efficiency = (100 - wastage) / 100;
 
-    // 1. Convert Tobacco to sticks (0.7g per stick)
-    const tKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
-    const capT = (tKG * eff) / 0.0007;
+    // 1. Raw Materials to Stick Capacity
+    const tobaccoKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
+    const capT = (tobaccoKG * efficiency) / 0.0007;
+    const capP = (clean(d.p_val) * efficiency) * 12;
+    const capR = (clean(d.f_val) * efficiency) * 6;
 
-    // 2. Paper/Tow/Rods (Checks if they exist in the row)
-    const capP = (clean(d.p_val) * eff) * 12;
-    const capR = (clean(d.f_val) * eff) * 6;
-
-    // 3. Theoretical Max (Limiting Factor)
+    // 2. Limiting Factor
     const caps = [capT, capP, capR].filter(v => v > 0);
     const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
     
@@ -119,8 +105,9 @@ const processedData = useMemo(() => {
 
     return {
       ...d,
-      displayLabel: `${d.month || ''} ${d.year || ''}`.trim(),
-      tobaccoKG: Math.round(tKG),
+      // FIX X-AXIS: Creates "Dec 2025"
+      displayLabel: `${d.month?.substring(0,3)} ${d.year}`,
+      tobaccoKG: Math.round(tobaccoKG),
       outflow: Math.round(rowOutflow),
       theoreticalMax: Math.round(theoreticalMax),
       cumulativeInput: Math.round(pool),
@@ -130,17 +117,15 @@ const processedData = useMemo(() => {
   });
 }, [data, wastage]);
 
-// KPI BLOCK (Whole numbers only)
-// Rounds to whole sticks and ensures no negative results
+// --- KPI MATH (Rounded & Non-Negative) ---
 const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
-
 const totalGhostVolume = Math.round(processedData.reduce((acc, curr) => {
-    // We only count "Ghost" volume if Exports > Capacity at that point in time
-    const net = curr.cumulativeOutput - curr.cumulativeInput;
-    return acc + Math.max(0, net);
+  // Gap is only "Ghost" if exports > capacity
+  const gap = curr.cumulativeOutput - curr.cumulativeInput;
+  return acc + Math.max(0, gap);
 }, 0));
 const activeEntities = new Set(processedData.map(d => d.entity)).size;
-
+  
      // --- BENFORD'S LAW CALCULATION ---
   const benfordAnalysis = useMemo(() => {
     if (processedData.length === 0) return [];
