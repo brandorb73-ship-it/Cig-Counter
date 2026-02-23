@@ -137,10 +137,13 @@ const firstDigit = (() => {
   const str = Math.floor(val).toString();
   return parseInt(str[0], 10);
 })();
-      return {
+    return {
     ...d,
     xAxisLabel: `${monthShort} ${d.Year || d.year || ''}`,
-    firstDigit,   // ✅ ADD THIS LINE
+    firstDigit,   // ✅ Benford's Law check
+    in: Math.round(invPool),    // ✅ The Green Area data
+    out: Math.round(cumOutflow) // ✅ The Red Line data
+};
   
       tobaccoKG: Math.round(tKG),
       outflow: Math.round(monthlyOut),
@@ -295,31 +298,35 @@ const originAnalysis = useMemo(() => {
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
     <Tooltip formatter={(value) => value.toLocaleString()} />  {/* ✅ CORRECT */}
 {/* Smoking Gun Axis */}
-<XAxis 
-  dataKey="xAxisLabel"
-  type="category"
-  scale="band"                 // ✅ Forces categorical spacing
-  stroke="#64748b"
-  fontSize={10}
-  tickLine={false}
-  axisLine={false}
-  interval={0}
-  angle={-30}                  // ✅ Prevent overlap
-  textAnchor="end"
-  height={60}                  // ✅ Prevent clipping
-/>
-<YAxis 
-  width={80}
-  stroke="#94a3b8"
-  tickLine={false}
-  axisLine={false}
-  tickFormatter={(v) => {
-    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
-    return v;
-  }}
-/>
+<AreaChart data={processedData}>
+  <XAxis 
+    dataKey="xAxisLabel"   // MUST match the key in your logic
+    type="category"        // FORCES text display (No formulas!)
+    stroke="#64748b" 
+    fontSize={10} 
+    interval={0} 
+  />
+  <YAxis stroke="#64748b" fontSize={10} />
+  <Tooltip />
+  
+  {/* 🟢 The Green Area: Legal Inventory Capacity */}
+  <Area 
+    type="monotone" 
+    dataKey="in"           // MUST match the key in logic
+    stroke="#10b981" 
+    fill="#10b981" 
+    fillOpacity={0.1} 
+  />
+  
+  {/* 🔴 The Red Line: Actual Cumulative Exports */}
+  <Line 
+    type="monotone" 
+    dataKey="out"          // MUST match the key in logic
+    stroke="#ef4444" 
+    strokeWidth={3} 
+    dot={{ r: 4, fill: '#ef4444' }} 
+  />
+</AreaChart>
 <Area name="Mass Balance Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.1} stroke="#10b981" />
 <Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
 {/* Scatter Plot Axis (Fixes long numbers) */}
