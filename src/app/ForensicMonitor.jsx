@@ -49,34 +49,40 @@ const fetchSheetData = async () => {
     const csvText = await response.text();
     const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
     
-    // Clean and lowercase headers (handles hidden BOM characters)
-    const rawHeaders = lines[0].split(',')
-      .map(h => h.trim().toLowerCase().replace(/^\ufeff/, ""));
+    // Clean headers: lowercase, remove quotes, remove hidden characters
+    const headers = lines[0].split(',').map(h => 
+      h.trim().toLowerCase().replace(/['"“”\ufeff]/g, '')
+    );
 
     const formatted = lines.slice(1).map(row => {
+      // Handle commas inside quotes if they exist
       const cols = row.split(',').map(c => c.trim());
       const entry = {};
-      rawHeaders.forEach((h, i) => entry[h] = cols[i]);
+      headers.forEach((h, i) => entry[h] = cols[i]);
+
+      // HELPER: Finds a value even if the header name is slightly off
+      const getVal = (possibleNames) => {
+        const foundKey = headers.find(h => possibleNames.includes(h));
+        return entry[foundKey] || "";
+      };
 
       return {
-        // We use the lowercase mapping to match the cleaned headers
-        entity: entry['entity'],
-        month: entry['month'],
-        year: entry['year'],
-        t_val: entry['tobacco'],
-        t_unit: entry['tobacco unit'],
-        tow_val: entry['tow'],
-        tow_unit: entry['tow unit'],
-        p_val: entry['paper'],
-        f_val: entry['filter'],
-        outflow: entry['outflow'],
-        dest: entry['destination']
+        // Mapping CSV column names to code variables
+        entity: getVal(['entity', 'company', 'name']),
+        month: getVal(['month']),
+        year: getVal(['year']),
+        t_val: getVal(['tobacco', 'tobacco weight']),
+        t_unit: getVal(['tobacco unit']),
+        tow_val: getVal(['tow', 'acetate tow']),
+        p_val: getVal(['paper', 'cigarette paper']),
+        f_val: getVal(['filter', 'filter rods']),
+        outflow: getVal(['outflow', 'sticks', 'export']),
       };
-    }).filter(r => r.entity && String(r.entity).length > 1); // Filters empty rows
+    }).filter(r => r.entity && r.entity.length > 2); // Drops empty rows at bottom
 
     setData(formatted);
-  } catch (error) {
-    console.error("Critical Sync Error:", error);
+  } catch (e) {
+    console.error("Connection failed:", e);
   }
 };
   
@@ -84,50 +90,54 @@ const fetchSheetData = async () => {
 const processedData = useMemo(() => {
   const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
   const clean = (val) => {
-    if (!val) return 0;
-    // Removes everything except numbers, dots, and minus signs
+    if (!val || val === "0") return 0;
     const n = parseFloat(String(val).replace(/[^\d.-]/g, ''));
-    return isNaN(n) ? 0 : Math.abs(n); // Math.abs prevents "negative exports"
+    return isNaN(n) ? 0 : Math.abs(n);
   };
 
   let pool = 0; 
   let actual = 0;
 
   return data.map((d) => {
-    const efficiency = (100 - wastage) / 100;
+    const eff = (100 - wastage) / 100;
 
-    // 1. Calculate Capacity (Legal Limit)
-    const tobaccoKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
-    const yieldT = (tobaccoKG * efficiency) / 0.0007; // Forensic standard: 0.7g/stick
+    // 1. Convert Tobacco to sticks (0.7g per stick)
+    const tKG = clean(d.t_val) * (units[d.t_unit?.toLowerCase()] || 1);
+    const capT = (tKG * eff) / 0.0007;
+
+    // 2. Paper/Tow/Rods (Checks if they exist in the row)
+    const capP = (clean(d.p_val) * eff) * 12;
+    const capR = (clean(d.f_val) * eff) * 6;
+
+    // 3. Theoretical Max (Limiting Factor)
+    const caps = [capT, capP, capR].filter(v => v > 0);
+    const theoreticalMax = caps.length > 0 ? Math.min(...caps) : 0;
     
-    // 2. Identify limiting precursor
-    // (Add Paper/Tow/Rods here using the same math if desired)
-    const theoreticalMax = Math.round(yieldT);
-    const rowOutflow = Math.round(clean(d.outflow));
-
+    const rowOutflow = clean(d.outflow);
     pool += theoreticalMax;
     actual += rowOutflow;
 
     return {
       ...d,
-      // Fixes the "Undefined" X-Axis descriptions
-      displayLabel: d.month && d.year ? `${d.month.substring(0,3)} ${d.year}` : "N/A",
-      tobaccoKG: Math.round(tobaccoKG),
-      outflow: rowOutflow,
-      theoreticalMax,
-      cumulativeInput: pool,
-      cumulativeOutput: actual,
+      displayLabel: `${d.month || ''} ${d.year || ''}`.trim(),
+      tobaccoKG: Math.round(tKG),
+      outflow: Math.round(rowOutflow),
+      theoreticalMax: Math.round(theoreticalMax),
+      cumulativeInput: Math.round(pool),
+      cumulativeOutput: Math.round(actual),
       firstDigit: parseInt(rowOutflow.toString()[0]) || 0
     };
   });
 }, [data, wastage]);
 
-// --- KPI CALCULATIONS (Whole Numbers Only) ---
+// KPI BLOCK (Whole numbers only)
+// Rounds to whole sticks and ensures no negative results
 const totalOutflow = Math.round(processedData.reduce((acc, curr) => acc + curr.outflow, 0));
+
 const totalGhostVolume = Math.round(processedData.reduce((acc, curr) => {
-  // Gap is only "Ghost" if exports > capacity
-  const gap = curr.cumulativeOutput - curr.cumulativeInput;
-  return acc + Math.max(0, gap);
+    // We only count "Ghost" volume if Exports > Capacity at that point in time
+    const net = curr.cumulativeOutput - curr.cumulativeInput;
+    return acc + Math.max(0, net);
 }, 0));
 const activeEntities = new Set(processedData.map(d => d.entity)).size;
 
