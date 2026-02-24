@@ -142,6 +142,60 @@ return sorted.map((d) => {
   };
 });
 }, [data, wastage]);
+
+  // 🔥 SANKEY FLOW BUILDER (Origin → Entity → Destination)
+const sankeyData = useMemo(() => {
+  if (!data || data.length === 0) return { nodes: [], links: [] };
+
+  const nodeMap = {};
+  const links = [];
+
+  const getNodeIndex = (name) => {
+    if (!nodeMap[name]) {
+      nodeMap[name] = { name };
+    }
+    return Object.keys(nodeMap).indexOf(name);
+  };
+
+  data.forEach(d => {
+    const origin = String(d.origin || "Unknown Origin");
+    const entity = String(d.entity || "Unknown Entity");
+    const dest = String(d.dest || "Unknown Destination");
+
+    const value = Math.max(1, parseFloat(d.exports) || 1);
+
+    // Origin → Entity
+    links.push({
+      source: origin,
+      target: entity,
+      value
+    });
+
+    // Entity → Destination
+    links.push({
+      source: entity,
+      target: dest,
+      value
+    });
+  });
+
+  // Convert names → indices
+  const nodes = Object.keys(nodeMap).map(name => ({ name }));
+
+  const nodeIndex = {};
+  nodes.forEach((n, i) => {
+    nodeIndex[n.name] = i;
+  });
+
+  const formattedLinks = links.map(l => ({
+    source: nodeIndex[l.source],
+    target: nodeIndex[l.target],
+    value: l.value
+  }));
+
+  return { nodes, links: formattedLinks };
+
+}, [data]);
   // ANOMALY TICKER LOGIC
 const anomalies = useMemo(() => {
   return processedData.filter((d, i, arr) => {
