@@ -1,41 +1,39 @@
-// FULL ENTERPRISE FORENSIC ENGINE V3
-// Includes: Entity Risk Ranking, Anomaly Detection, Benford Panel, Sankey, PDF Export
-
 "use client";
 
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
-  BarChart, Bar, ScatterChart, Scatter
+  ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, 
+  CartesianGrid, BarChart, Bar, Legend, Cell, Sankey, Tooltip as SankeyTooltip
 } from "recharts";
-import { Sankey, Tooltip as SankeyTooltip } from "recharts";
-import html2canvas from "html2canvas";
 
 export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
   const [url, setUrl] = useState("");
   const [wastage, setWastage] = useState(5);
-  const reportRef = useRef();
 
   const fetchCSV = async () => {
-    const res = await fetch(url);
-    const text = await res.text();
-    const rows = text.split("\n").slice(1);
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      const rows = text.split("\n").filter(row => row.trim() !== "").slice(1);
 
-    const parsed = rows.map(r => {
-      const c = r.split(",");
-      return {
-        entity: c[0],
-        month: c[1],
-        year: c[2],
-        tobacco: parseFloat(c[3]) || 0,
-        exports: parseFloat(c[15]) || 0,
-        origin: c[5] || "Unknown",
-        dest: c[14] || "Unknown"
-      };
-    });
-
-    setData(parsed);
+      const parsed = rows.map(r => {
+        const c = r.split(",").map(field => field.trim());
+        return {
+          entity: c[0] || "Unknown",
+          month: c[1] || "",
+          year: c[2] || "",
+          tobacco: parseFloat(c[3]) || 0,
+          exports: parseFloat(c[15]) || 0,
+          origin: c[5] || "Unknown",
+          dest: c[14] || "Unknown"
+        };
+      });
+      setData(parsed);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      alert("Check your CSV URL and ensure it is published as a CSV.");
+    }
   };
 
   const processed = useMemo(() => {
@@ -43,145 +41,116 @@ export default function ForensicEngineV3() {
     let cumOut = 0;
 
     return data.map(d => {
-      const cap = d.tobacco / 0.0007;
-      inv = inv * 0.98 + cap;
+      const eff = (100 - wastage) / 100;
+      const monthlyCap = (d.tobacco * eff) / 0.0007;
+      
+      // 2% Monthly Inventory Decay (Forensic Standard)
+      inv = (inv * 0.98) + monthlyCap;
       cumOut += d.exports;
 
+      const label = `${d.month.substring(0, 3)} ${d.year}`;
       const gap = Math.max(0, cumOut - inv);
-      const pdi = inv > 0 ? ((cumOut - inv) / inv) * 100 : 0;
-      const risk = Math.min(100, Math.abs(pdi));
+      const riskScore = inv > 0 ? (cumOut / inv) * 100 : 0;
 
       return {
         ...d,
-        inv,
-        cumOut,
-        gap,
-        pdi,
-        risk
+        label,
+        inv: Math.round(inv),
+        cumOut: Math.round(cumOut),
+        gap: Math.round(gap),
+        risk: Math.min(100, Math.round(riskScore))
       };
     });
-  }, [data]);
+  }, [data, wastage]);
 
-  // ENTITY RANKING
-  const entityRanking = useMemo(() => {
-    const map = {};
-    processed.forEach(d => {
-      if (!map[d.entity]) map[d.entity] = { risk: 0, volume: 0 };
-      map[d.entity].risk += d.risk;
-      map[d.entity].volume += d.exports;
-    });
-
-    return Object.entries(map)
-      .map(([k, v]) => ({ entity: k, ...v }))
-      .sort((a, b) => b.risk - a.risk)
-      .slice(0, 10);
-  }, [processed]);
-
-  // SPIKE DETECTION
+  // ANOMALY TICKER LOGIC
   const anomalies = useMemo(() => {
     return processed.filter((d, i, arr) => {
       if (i === 0) return false;
-      return d.exports > arr[i - 1].exports * 2;
+      // Flag if exports more than double month-over-month
+      return d.exports > (arr[i - 1].exports * 2) && d.exports > 0;
     });
   }, [processed]);
 
-  // BENFORD
+  // BENFORD'S LAW (First Digit Analysis)
   const benford = useMemo(() => {
     const counts = Array(9).fill(0);
     processed.forEach(d => {
-      const fd = String(Math.floor(d.exports))[0];
-      if (fd) counts[fd - 1]++;
-    });
-
-    return counts.map((c, i) => ({ digit: i + 1, value: c }));
-  }, [processed]);
-
-  // SANKEY
-  const sankeyData = useMemo(() => {
-    const nodes = [];
-    const links = [];
-    const idx = {};
-
-    const getIndex = name => {
-      if (!(name in idx)) {
-        idx[name] = nodes.length;
-        nodes.push({ name });
+      const firstDigit = String(Math.abs(d.exports))[0];
+      if (firstDigit >= "1" && firstDigit <= "9") {
+        counts[parseInt(firstDigit) - 1]++;
       }
-      return idx[name];
-    };
-
-    processed.forEach(d => {
-      const o = getIndex(d.origin);
-      const e = getIndex(d.entity);
-      const dest = getIndex(d.dest);
-
-      links.push({ source: o, target: e, value: d.exports });
-      links.push({ source: e, target: dest, value: d.exports });
     });
-
-    return { nodes, links };
+    return counts.map((c, i) => ({ digit: i + 1, actual: c }));
   }, [processed]);
-
-  const exportPDF = async () => {
-    const canvas = await html2canvas(reportRef.current);
-    const img = canvas.toDataURL("image/png");
-    const pdf = new jsPDF();
-    pdf.addImage(img, "PNG", 0, 0, 210, 297);
-    pdf.save("forensic-report.pdf");
-  };
 
   return (
-    <div className="p-6 space-y-6" ref={reportRef}>
-      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="CSV URL" />
-      <button onClick={fetchCSV}>Load</button>
-      <button onClick={exportPDF}>Export PDF</button>
-
-      {/* SMOKING GUN */}
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={processed}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="month" />
-          <YAxis />
-          <Tooltip />
-          <Line dataKey="inv" stroke="#10b981" />
-          <Line dataKey="cumOut" stroke="#ef4444" />
-        </LineChart>
-      </ResponsiveContainer>
-
-      {/* ENTITY RANK */}
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={entityRanking}>
-          <XAxis dataKey="entity" />
-          <YAxis />
-          <Tooltip />
-          <Bar dataKey="risk" />
-        </BarChart>
-      </ResponsiveContainer>
-
-      {/* BENFORD */}
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={benford}>
-          <XAxis dataKey="digit" />
-          <YAxis />
-          <Tooltip />
-          <Bar dataKey="value" />
-        </BarChart>
-      </ResponsiveContainer>
-
-      {/* SANKEY */}
-      <ResponsiveContainer width="100%" height={400}>
-        <Sankey data={sankeyData} nodePadding={50} linkCurvature={0.5}>
-          <SankeyTooltip />
-        </Sankey>
-      </ResponsiveContainer>
-
-      {/* ANOMALIES */}
-      <div>
-        <h3>Anomalies</h3>
-        {anomalies.map((a, i) => (
-          <div key={i}>{a.entity} spike</div>
-        ))}
+    <div className="p-6 space-y-8 bg-slate-950 min-h-screen text-slate-200">
+      
+      {/* SYNC PANEL */}
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-4 items-end">
+        <div className="flex-1 space-y-2">
+          <label className="text-[10px] font-bold uppercase text-emerald-400 tracking-widest">Forensic Data Source (CSV URL)</label>
+          <input 
+            className="w-full bg-black border border-slate-800 p-3 rounded-xl text-xs text-emerald-100 outline-none focus:border-emerald-500/50"
+            value={url} 
+            onChange={e => setUrl(e.target.value)} 
+            placeholder="Paste CSV link here..." 
+          />
+        </div>
+        <button 
+          onClick={fetchCSV}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-xl font-bold text-xs uppercase transition-all"
+        >
+          Sync Intelligence
+        </button>
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* SMOKING GUN: MATERIAL BALANCE */}
+        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
+          <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Smoking Gun: Material Balance</h3>
+          <ResponsiveContainer width="100%" height="90%">
+            <ComposedChart data={processed}>
+              <XAxis dataKey="label" type="category" fontSize={10} stroke="#475569" />
+              <YAxis fontSize={10} stroke="#475569" />
+              <Tooltip contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
+              <Area dataKey="inv" name="Legal Capacity" fill="#10b981" fillOpacity={0.1} stroke="#10b981" strokeDasharray="5 5" />
+              <Line dataKey="cumOut" name="Actual Exports" stroke="#ef4444" strokeWidth={3} dot={{r: 4}} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* BENFORD'S LAW DISTRIBUTION */}
+        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
+          <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Data Integrity (Benford Analysis)</h3>
+          <ResponsiveContainer width="100%" height="90%">
+            <BarChart data={benford}>
+              <XAxis dataKey="digit" stroke="#475569" />
+              <YAxis stroke="#475569" />
+              <Tooltip />
+              <Bar dataKey="actual" fill="#6366f1" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* ANOMALY TICKER */}
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+        <h3 className="text-xs font-black uppercase text-red-500 tracking-widest mb-4">Live Anomaly Detection</h3>
+        <div className="space-y-2">
+          {anomalies.length > 0 ? anomalies.map((a, i) => (
+            <div key={i} className="flex justify-between items-center bg-red-950/20 p-3 rounded-lg border border-red-900/30">
+              <span className="text-xs font-mono text-red-400">⚠️ VOLUMETRIC SPIKE DETECTED</span>
+              <span className="text-xs font-bold">{a.entity} — {a.month} {a.year}</span>
+            </div>
+          )) : (
+            <div className="text-xs text-slate-500 italic">No significant volumetric spikes detected in current set.</div>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }
