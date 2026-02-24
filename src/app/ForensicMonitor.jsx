@@ -371,22 +371,19 @@ const benford = useMemo(() => {
         name="Inventory" 
         stroke="#475569" 
         fontSize={10}
-        label={{ value: 'Inventory Pool', position: 'bottom', fill: '#475569', fontSize: 10 }}
       />
       <YAxis 
         type="number" 
-        dataKey="outflow" 
+        dataKey="outflow" // 🔥 This MUST match the 'outflow' key in your logic
         name="Exports" 
         stroke="#475569" 
         fontSize={10}
-        label={{ value: 'Actual Exports', angle: -90, position: 'insideLeft', fill: '#475569', fontSize: 10 }}
       />
       <Tooltip cursor={{ strokeDasharray: '3 3' }} />
       <Scatter name="Monthly Correlation" data={processedData} fill="#38bdf8" />
     </ScatterChart>
   </ResponsiveContainer>
 </div>
-
       {/* ✅ PASTE RISK TABLE HERE */}
 
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
