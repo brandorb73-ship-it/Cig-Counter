@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, 
   CartesianGrid, BarChart, Bar, Legend, Cell, Sankey, Tooltip as SankeyTooltip
 } from "recharts";
+import { ScatterChart, Scatter } from "recharts";
 
 export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
@@ -68,7 +69,7 @@ export default function ForensicEngineV3() {
 
     const monthShort = String(d.month || "").substring(0,3);
 
-    const tobaccoVal = n(d.t_val);
+    const tobaccoVal = n(d.tobacco);
     const tobaccoUnit = String(d.t_unit || "kg").toLowerCase();
 
     const tKG = tobaccoVal * (units[tobaccoUnit] || 1);
@@ -99,7 +100,7 @@ export default function ForensicEngineV3() {
     // 🔥 TRANSIT RISK
     const riskHubs = ["SINGAPORE","DUBAI","PANAMA","BELIZE","CYPRUS"];
 
-    const route = String(d.destination || "").toUpperCase();
+    const route = String(d.dest || "").toUpperCase();
     const isHighRisk = riskHubs.some(h => route.includes(h));
 
     const transitRiskScore = isHighRisk ? 80 : 20;
@@ -133,29 +134,34 @@ export default function ForensicEngineV3() {
 
 }, [data, wastage]);
   // ANOMALY TICKER LOGIC
-  const anomalies = useMemo(() => {
-    return processed.filter((d, i, arr) => {
-      if (i === 0) return false;
-      // Flag if exports more than double month-over-month
-      return d.exports > (arr[i - 1].exports * 2) && d.exports > 0;
-    });
-  }, [processed]);
+const anomalies = useMemo(() => {
+  return processedData.filter((d, i, arr) => {
+    if (i === 0) return false;
+    return d.outflow > (arr[i - 1].outflow * 2) && d.outflow > 0;
+  });
+}, [processedData]);
 
-  // BENFORD'S LAW (First Digit Analysis)
-  const benford = useMemo(() => {
-    const counts = Array(9).fill(0);
-    processed.forEach(d => {
-      const firstDigit = String(Math.abs(d.exports))[0];
-      if (firstDigit >= "1" && firstDigit <= "9") {
-        counts[parseInt(firstDigit) - 1]++;
-      }
-    });
-    return counts.map((c, i) => ({ digit: i + 1, actual: c }));
-  }, [processed]);
+const benford = useMemo(() => {
+  const counts = Array(9).fill(0);
+
+  processedData.forEach(d => {
+    if (d.firstDigit >= 1 && d.firstDigit <= 9) {
+      counts[d.firstDigit - 1]++;
+    }
+  });
+
+  const total = counts.reduce((a,b)=>a+b,0);
+
+  return counts.map((c,i)=>({
+    digit: i+1,
+    actual: total ? (c/total)*100 : 0,
+    ideal: [30.1,17.6,12.5,9.7,7.9,6.7,5.8,5.1,4.6][i]
+  }));
+}, [processedData]);
 
   return (
     <div className="p-6 space-y-8 bg-slate-950 min-h-screen text-slate-200">
-      
+
       {/* SYNC PANEL */}
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-4 items-end">
         <div className="flex-1 space-y-2">
@@ -234,7 +240,28 @@ export default function ForensicEngineV3() {
   </ComposedChart>
 </ResponsiveContainer>
         </div>
+        
+{/* INVENTORY DECAY */}
+<div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
+  <h3 className="text-slate-800 font-black text-[11px] uppercase tracking-[0.3em] mb-6">
+    Inventory Decay (Drying Effect)
+  </h3>
 
+  <div className="h-[250px] w-full">
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={processedData}>
+        <XAxis dataKey="xAxisLabel" />
+        <YAxis />
+        <Tooltip />
+        <Line 
+          dataKey="inventoryPool" 
+          stroke="#f59e0b"
+          strokeWidth={2}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
+</div>
         {/* BENFORD'S LAW DISTRIBUTION */}
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
           <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Data Integrity (Benford Analysis)</h3>
@@ -248,7 +275,22 @@ export default function ForensicEngineV3() {
           </ResponsiveContainer>
         </div>
       </div>
+      
+SCATTER CHART
+<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
+  <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">
+    Mass vs Output Correlation
+  </h3>
 
+  <ResponsiveContainer width="100%" height="90%">
+    <ScatterChart>
+      <XAxis dataKey="inventoryPool" name="Inventory" />
+      <YAxis dataKey="outflow" name="Exports" />
+      <Tooltip cursor={{ strokeDasharray: "3 3" }} />
+      <Scatter data={processedData} fill="#38bdf8" />
+    </ScatterChart>
+  </ResponsiveContainer>
+</div>
       {/* ANOMALY TICKER */}
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
         <h3 className="text-xs font-black uppercase text-red-500 tracking-widest mb-4">Live Anomaly Detection</h3>
@@ -264,6 +306,90 @@ export default function ForensicEngineV3() {
         </div>
       </div>
 
+      {/* ✅ PASTE RISK TABLE HERE */}
+
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+        <h3 className="text-xs font-black uppercase text-red-400 tracking-widest mb-4">
+          Entity Risk Ranking
+        </h3>
+
+        <div className="space-y-2">
+          {Object.entries(
+            processedData.reduce((acc, d) => {
+              acc[d.entity] = (acc[d.entity] || 0) + d.transitRiskScore + Math.abs(d.pdi);
+              return acc;
+            }, {})
+          )
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([entity, score], i) => (
+              <div
+                key={i}
+                className="flex justify-between items-center bg-red-950/20 p-3 rounded-lg border border-red-900/30"
+              >
+                <span className="text-xs text-red-300">{entity}</span>
+                <span className="text-xs font-bold text-red-400">
+                  Risk Score: {Math.round(score)}
+                </span>
+              </div>
+            ))}
+        </div>
+      </div>
+<div className="grid grid-cols-2 gap-6 mt-6">
+
+  {/* ORIGIN */}
+  <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+    <h4 className="text-xs uppercase text-slate-400 mb-4">Origin Intelligence</h4>
+    {Object.entries(
+      processedData.reduce((acc,d)=>{
+        acc[d.origin] = (acc[d.origin]||0)+d.tobacco;
+        return acc;
+      },{})
+    ).map(([k,v],i)=>(
+      <div key={i} className="flex justify-between text-xs mb-2">
+        <span>{k}</span>
+        <span>{Math.round(v)}</span>
+      </div>
+    ))}
+  </div>
+
+  {/* DESTINATION */}
+  <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+    <h4 className="text-xs uppercase text-slate-400 mb-4">Destination Intelligence</h4>
+    {Object.entries(
+      processedData.reduce((acc,d)=>{
+        acc[d.dest] = (acc[d.dest]||0)+d.outflow;
+        return acc;
+      },{})
+    ).map(([k,v],i)=>(
+      <div key={i} className="flex justify-between text-xs mb-2">
+        <span>{k}</span>
+        <span>{Math.round(v)}</span>
+      </div>
+    ))}
+  </div>
+
+</div>
+<div className="bg-slate-900 p-6 rounded-xl border border-slate-800 mt-6">
+  <h4 className="text-xs uppercase text-slate-400 mb-4">
+    Top Risk Entities
+  </h4>
+
+  {Object.entries(
+    processedData.reduce((acc,d)=>{
+      acc[d.entity] = (acc[d.entity]||0) + d.transitRiskScore;
+      return acc;
+    },{})
+  )
+  .sort((a,b)=>b[1]-a[1])
+  .slice(0,10)
+  .map(([name,score],i)=>(
+    <div key={i} className="flex justify-between text-xs mb-2">
+      <span>{name}</span>
+      <span className="text-red-400">{score}</span>
+    </div>
+  ))}
+</div>
     </div>
   );
 }
