@@ -356,35 +356,36 @@ const benford = useMemo(() => {
         </div>
       </div>
       
-SCATTER CHART
+{/* ✅ SCATTER CHART: CORRELATION ANALYSIS */}
 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
   <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">
     Mass vs Output Correlation
   </h3>
 
   <ResponsiveContainer width="100%" height="90%">
-    <ScatterChart>
-      <XAxis dataKey="inventoryPool" name="Inventory" />
-      <YAxis dataKey="outflow" name="Exports" />
-      <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-      <Scatter data={processedData} fill="#38bdf8" />
+    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+      <XAxis 
+        type="number" 
+        dataKey="inventoryPool" 
+        name="Inventory" 
+        stroke="#475569" 
+        fontSize={10}
+        label={{ value: 'Inventory Pool', position: 'bottom', fill: '#475569', fontSize: 10 }}
+      />
+      <YAxis 
+        type="number" 
+        dataKey="outflow" 
+        name="Exports" 
+        stroke="#475569" 
+        fontSize={10}
+        label={{ value: 'Actual Exports', angle: -90, position: 'insideLeft', fill: '#475569', fontSize: 10 }}
+      />
+      <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+      <Scatter name="Monthly Correlation" data={processedData} fill="#38bdf8" />
     </ScatterChart>
   </ResponsiveContainer>
 </div>
-      {/* ANOMALY TICKER */}
-      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-        <h3 className="text-xs font-black uppercase text-red-500 tracking-widest mb-4">Live Anomaly Detection</h3>
-        <div className="space-y-2">
-          {anomalies.length > 0 ? anomalies.map((a, i) => (
-            <div key={i} className="flex justify-between items-center bg-red-950/20 p-3 rounded-lg border border-red-900/30">
-              <span className="text-xs font-mono text-red-400">⚠️ VOLUMETRIC SPIKE DETECTED</span>
-              <span className="text-xs font-bold">{a.entity} — {a.month} {a.year}</span>
-            </div>
-          )) : (
-            <div className="text-xs text-slate-500 italic">No significant volumetric spikes detected in current set.</div>
-          )}
-        </div>
-      </div>
 
       {/* ✅ PASTE RISK TABLE HERE */}
 
