@@ -36,33 +36,102 @@ export default function ForensicEngineV3() {
     }
   };
 
-  const processed = useMemo(() => {
-    let inv = 0;
-    let cumOut = 0;
+  const processedData = useMemo(() => {
+  if (!data || data.length === 0) return [];
 
-    return data.map(d => {
-      const eff = (100 - wastage) / 100;
-      const monthlyCap = (d.tobacco * eff) / 0.0007;
-      
-      // 2% Monthly Inventory Decay (Forensic Standard)
-      inv = (inv * 0.98) + monthlyCap;
-      cumOut += d.exports;
+  const units = { kg: 1, ton: 1000, mt: 1000, lb: 0.4535 };
 
-      const label = `${d.month.substring(0, 3)} ${d.year}`;
-      const gap = Math.max(0, cumOut - inv);
-      const riskScore = inv > 0 ? (cumOut / inv) * 100 : 0;
+  const n = (val) => {
+    if (!val) return 0;
+    const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ""));
+    return isNaN(parsed) ? 0 : Math.abs(parsed);
+  };
 
-      return {
-        ...d,
-        label,
-        inv: Math.round(inv),
-        cumOut: Math.round(cumOut),
-        gap: Math.round(gap),
-        risk: Math.min(100, Math.round(riskScore))
-      };
-    });
-  }, [data, wastage]);
+  const monthOrder = {
+    jan:1,feb:2,mar:3,apr:4,may:5,jun:6,
+    jul:7,aug:8,sep:9,oct:10,nov:11,dec:12
+  };
 
+  const sorted = [...data].sort((a,b)=>{
+    const yA = +a.year || 0;
+    const yB = +b.year || 0;
+    const mA = monthOrder[(a.month||"").toLowerCase()] || 0;
+    const mB = monthOrder[(b.month||"").toLowerCase()] || 0;
+    return yA !== yB ? yA - yB : mA - mB;
+  });
+
+  let invPool = 0;
+  let cumOut = 0;
+
+  return sorted.map((d) => {
+    const eff = (100 - wastage) / 100;
+
+    const monthShort = String(d.month || "").substring(0,3);
+
+    const tobaccoVal = n(d.t_val);
+    const tobaccoUnit = String(d.t_unit || "kg").toLowerCase();
+
+    const tKG = tobaccoVal * (units[tobaccoUnit] || 1);
+
+    // 🔥 PRODUCTION CAPACITY
+    const monthlyCapacity = (tKG * eff) / 0.0007;
+
+    const exports = n(
+      d["Cigarette Exports"] ||
+      d.outflow ||
+      d.exports
+    );
+
+    // 🔥 INVENTORY DECAY MODEL
+    invPool = (invPool * 0.98) + monthlyCapacity;
+
+    // 🔥 ROLLING MASS BALANCE
+    cumOut += exports;
+
+    // 🔥 STAMP GAP
+    const stampGap = Math.max(0, cumOut - invPool);
+
+    // 🔥 PDI (Precursor Divergence)
+    const pdi = invPool > 0 
+      ? ((monthlyCapacity - exports) / monthlyCapacity) * 100
+      : 0;
+
+    // 🔥 TRANSIT RISK
+    const riskHubs = ["SINGAPORE","DUBAI","PANAMA","BELIZE","CYPRUS"];
+
+    const route = String(d.destination || "").toUpperCase();
+    const isHighRisk = riskHubs.some(h => route.includes(h));
+
+    const transitRiskScore = isHighRisk ? 80 : 20;
+
+    // BENFORD
+    const firstDigit = exports > 0 
+      ? parseInt(exports.toString()[0]) 
+      : 0;
+
+    return {
+      ...d,
+      xAxisLabel: `${monthShort} ${d.year}`,
+
+      cumulativeInput: Math.round(invPool),
+      cumulativeOutput: Math.round(cumOut),
+
+      inventoryPool: Math.round(invPool),
+      monthlyCapacity: Math.round(monthlyCapacity),
+
+      outflow: Math.round(exports),
+
+      stampGap,
+      pdi: Math.round(pdi),
+
+      transitRiskScore,
+      isHighRisk,
+
+      firstDigit
+    };
+  });
+
+}, [data, wastage]);
   // ANOMALY TICKER LOGIC
   const anomalies = useMemo(() => {
     return processed.filter((d, i, arr) => {
@@ -111,15 +180,59 @@ export default function ForensicEngineV3() {
         {/* SMOKING GUN: MATERIAL BALANCE */}
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
           <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Smoking Gun: Material Balance</h3>
-          <ResponsiveContainer width="100%" height="90%">
-            <ComposedChart data={processed}>
-              <XAxis dataKey="label" type="category" fontSize={10} stroke="#475569" />
-              <YAxis fontSize={10} stroke="#475569" />
-              <Tooltip contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
-              <Area dataKey="inv" name="Legal Capacity" fill="#10b981" fillOpacity={0.1} stroke="#10b981" strokeDasharray="5 5" />
-              <Line dataKey="cumOut" name="Actual Exports" stroke="#ef4444" strokeWidth={3} dot={{r: 4}} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={400}>
+  <ComposedChart data={processedData}>
+    
+    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+
+    <XAxis 
+      dataKey="xAxisLabel"
+      tick={{ fill: "#94a3b8", fontSize: 12 }}
+    />
+
+    <YAxis 
+      yAxisId="left"
+      tickFormatter={(v)=>v.toLocaleString()}
+      tick={{ fill: "#94a3b8" }}
+    />
+
+    <YAxis 
+      yAxisId="right"
+      orientation="right"
+      tickFormatter={(v)=>v.toLocaleString()}
+      tick={{ fill: "#94a3b8" }}
+    />
+
+    <Tooltip
+      formatter={(v,name)=>[
+        v.toLocaleString(),
+        name === "cumulativeInput" 
+          ? "Material Capacity"
+          : "Actual Exports"
+      ]}
+    />
+
+    <Legend />
+
+    <Area
+      yAxisId="left"
+      dataKey="cumulativeInput"
+      stroke="#10b981"
+      fill="#10b981"
+      fillOpacity={0.2}
+      name="Material Pool"
+    />
+
+    <Line
+      yAxisId="right"
+      dataKey="cumulativeOutput"
+      stroke="#ef4444"
+      strokeWidth={3}
+      name="Exports"
+    />
+
+  </ComposedChart>
+</ResponsiveContainer>
         </div>
 
         {/* BENFORD'S LAW DISTRIBUTION */}
