@@ -10,7 +10,6 @@ import {
 } from "recharts";
 import { Sankey, Tooltip as SankeyTooltip } from "recharts";
 import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 
 export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
