@@ -1,511 +1,188 @@
-"use client"; // REQUIRED FOR NEXT.JS
+// FULL ENTERPRISE FORENSIC ENGINE V3
+// Includes: Entity Risk Ranking, Anomaly Detection, Benford Panel, Sankey, PDF Export
 
-import React, { useState, useMemo } from 'react';
-import { 
-  ComposedChart,
-  AreaChart, 
-  Line, 
-  Bar, 
-  BarChart,
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer, 
-  Area, 
-  ScatterChart, 
-  Scatter, 
-  ZAxis 
-} from 'recharts';
-import { 
-  ShieldAlert, 
-  Globe, 
-  Activity, 
-  Zap, 
-  Link, 
-  Calculator, 
-  TrendingUp, 
-  BarChart3, 
-  DollarSign, 
-  Layers 
-} from 'lucide-react';
+"use client";
 
-const ForensicMonitor = () => {
+import React, { useState, useMemo, useRef } from "react";
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
+  BarChart, Bar, ScatterChart, Scatter
+} from "recharts";
+import { Sankey, Tooltip as SankeyTooltip } from "recharts";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+
+export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
-  const [sheetUrl, setSheetUrl] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [url, setUrl] = useState("");
   const [wastage, setWastage] = useState(5);
+  const reportRef = useRef();
 
-  // CONVERSION CONSTANTS
-  const yieldConstants = {
-    tobacco: 0.0007, // 0.7g per stick
-    tow: 20000,      // 20k sticks per 1kg
-    paper: 40000     // 40k sticks per unit
-  };
+  const fetchCSV = async () => {
+    const res = await fetch(url);
+    const text = await res.text();
+    const rows = text.split("\n").slice(1);
 
-const fetchSheetData = async () => {
-  try {
-    const response = await fetch(sheetUrl);
-    const csvText = await response.text();
-    const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== "");
-    
-    const formatted = lines.slice(1).map(row => {
-      // Split by comma, but remove any quotes that Excel adds
-      const cols = row.split(',').map(c => c.trim().replace(/^["']|["']$/g, ""));
-      
+    const parsed = rows.map(r => {
+      const c = r.split(",");
       return {
-        entity: cols[0],
-        month: cols[1],
-        year: cols[2],
-        t_val: cols[3],    // Tobacco
-        t_unit: cols[4],   // Unit
-        tow_val: cols[6],  // Tow
-        p_val: cols[9],    // Paper
-        f_val: cols[12],   // Filter
-        outflow: cols[15], // Outflow
+        entity: c[0],
+        month: c[1],
+        year: c[2],
+        tobacco: parseFloat(c[3]) || 0,
+        exports: parseFloat(c[15]) || 0,
+        origin: c[5] || "Unknown",
+        dest: c[14] || "Unknown"
       };
-    // Change your filter to this:
-}).filter(r => r.entity && r.entity.trim().length > 1 && r.month);
-
-    setData(formatted);
-  } catch (e) { console.error(e); }
-};
-  
-// --- 1. THE DATA ENGINE ---
-const processedData = useMemo(() => {
-  if (!data || data.length === 0) return [];
-
-  const units = { 'kg': 1, 'ton': 1000, 'mt': 1000, 'lb': 0.4535 };
-  const n = (val) => {
-    if (!val) return 0;
-    const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
-    return isNaN(parsed) ? 0 : Math.abs(parsed);
-  };
-
-  // CLEANING: Matches "Entity" and "Month" exactly as they appear in your CSV
-  const validData = data.filter(d => 
-    (d.Entity || d.entity) && 
-    (d.Month || d.month)
-  );
-const monthOrder = {
-  jan: 1, feb: 2, mar: 3, apr: 4,
-  may: 5, jun: 6, jul: 7, aug: 8,
-  sep: 9, oct: 10, nov: 11, dec: 12
-};
- const sortedData = [...validData].sort((a, b) => {
-  const yearA = parseInt(a.Year || a.year || 0);
-  const yearB = parseInt(b.Year || b.year || 0);
-
-  const monthA = monthOrder[String(a.Month || a.month || "").toLowerCase()] || 0;
-  const monthB = monthOrder[String(b.Month || b.month || "").toLowerCase()] || 0;
-
-  return yearA !== yearB ? yearA - yearB : monthA - monthB;
-});
-  let invPool = 0; 
-  let cumOutflow = 0;
-
-return sortedData.map((d) => {
-const eff = (100 - wastage) / 100;
-
-     // ✅ ADD STEP 4 HERE
-  const monthMap = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const rawMonth = String(d.Month || d.month || "");
-const monthShort = rawMonth.substring(0,3);
-   
-    // Mapping exact CSV Headers
-    const tobaccoVal = n(d['Tobacco Val'] || d.t_val);
-    const tobaccoUnit = String(d['Tobacco Unit'] || d.t_unit || 'kg').toLowerCase();
-    const tKG = tobaccoVal * (units[tobaccoUnit] || 1);
-    
-    const monthlyCap = (tKG * eff) / 0.0007;
-    const monthlyOut = n(d.Outflow || d.outflow);
-
-    // Forensic Math: Decay & Divergence
-    invPool = (invPool * 0.98) + monthlyCap;
-    cumOutflow += monthlyOut;
-    
-    // Precursor Risk Mapping
-    const riskHubs = ["SINGAPORE", "DUBAI", "PANAMA", "BELIZE", "CYPRUS"];
-    const routes = [
-      d['Tobacco Origin'], d['Tow Origin'], d['Paper Origin'], d['Filter Origin'], d['Destination']
-    ].map(v => String(v || "").toUpperCase());
-    
-    const hits = routes.filter(r => riskHubs.some(hub => r.includes(hub))).length;
-const firstDigit = (() => {
-  const val = Math.abs(monthlyOut);
-  if (!val || val === 0) return 0;
-  const str = Math.floor(val).toString();
-  return parseInt(str[0], 10);
-})();
-return {
-      ...d,
-      // This creates the label for the X-Axis
-      xAxisLabel: `${monthShort} ${d.Year || d.year || ''}`,
-      
-      // These are the values for the Chart Lines
-      in: Math.round(invPool),           // Total legal tobacco available
-      out: Math.round(cumOutflow),       // Total cigarettes exported
-      
-      // Keep your existing forensic keys
-      tobaccoKG: Math.round(tKG),
-      outflow: Math.round(monthlyOut),
-      cumulativeInput: Math.round(invPool),
-      cumulativeOutput: Math.round(cumOutflow),
-      stampGap: Math.max(0, cumOutflow - invPool),
-      firstDigit: firstDigit
-    };
-  });
-}, [data, wastage]);
-
-// Define KPI variables immediately after the loop
-const totalOutflow = processedData.reduce((acc, curr) => acc + curr.outflow, 0);
-const totalGhostVolume = processedData[processedData.length - 1]?.stampGap || 0;
-const activeEntities = new Set(processedData.map(d => d.Entity)).size;
-const avgPDI = processedData.length > 0 ? Math.round(processedData.reduce((a, b) => a + b.pdi, 0) / processedData.length) : 0;
-  
-// --- 2. THE ANALYTICS HELPERS (Derived from ProcessedData) ---
-const riskAnomalies = useMemo(() => {
-  return processedData
-    .filter(d => d.isAnomalous || d.transitRiskScore > 50)
-    .sort((a, b) => b.transitRiskScore - a.transitRiskScore)
-    .slice(0, 5);
-}, [processedData]);
-
-const originAnalysis = useMemo(() => {
-  const summary = {};
-  processedData.forEach(d => {
-    const org = d.t_origin || d.tobaccoOrigin || "Unknown";
-    summary[org] = (summary[org] || 0) + d.tobaccoKG;
-  });
-  return Object.entries(summary).map(([name, value]) => ({ name, value }));
-}, [processedData]);
-  
-     // --- BENFORD'S LAW CALCULATION ---
-  const benfordAnalysis = useMemo(() => {
-    const counts = Array(9).fill(0);
-    // We only look at rows where the outflow is greater than 0
-    const validRows = processedData.filter(d => d.firstDigit > 0);
-    
-    validRows.forEach(d => {
-      counts[d.firstDigit - 1]++;
     });
 
-    const idealDistribution = [30.1, 17.6, 12.5, 9.7, 7.9, 6.7, 5.8, 5.1, 4.6];
-    
-    return counts.map((count, i) => ({
-      digit: (i + 1).toString(),
-      actual: validRows.length > 0 ? parseFloat(((count / validRows.length) * 100).toFixed(1)) : 0,
-      ideal: idealDistribution[i]
-    }));
-  }, [processedData]);
-  const totalGap = processedData.reduce((acc, curr) => acc + curr.gap, 0);
+    setData(parsed);
+  };
+
+  const processed = useMemo(() => {
+    let inv = 0;
+    let cumOut = 0;
+
+    return data.map(d => {
+      const cap = d.tobacco / 0.0007;
+      inv = inv * 0.98 + cap;
+      cumOut += d.exports;
+
+      const gap = Math.max(0, cumOut - inv);
+      const pdi = inv > 0 ? ((cumOut - inv) / inv) * 100 : 0;
+      const risk = Math.min(100, Math.abs(pdi));
+
+      return {
+        ...d,
+        inv,
+        cumOut,
+        gap,
+        pdi,
+        risk
+      };
+    });
+  }, [data]);
+
+  // ENTITY RANKING
+  const entityRanking = useMemo(() => {
+    const map = {};
+    processed.forEach(d => {
+      if (!map[d.entity]) map[d.entity] = { risk: 0, volume: 0 };
+      map[d.entity].risk += d.risk;
+      map[d.entity].volume += d.exports;
+    });
+
+    return Object.entries(map)
+      .map(([k, v]) => ({ entity: k, ...v }))
+      .sort((a, b) => b.risk - a.risk)
+      .slice(0, 10);
+  }, [processed]);
+
+  // SPIKE DETECTION
+  const anomalies = useMemo(() => {
+    return processed.filter((d, i, arr) => {
+      if (i === 0) return false;
+      return d.exports > arr[i - 1].exports * 2;
+    });
+  }, [processed]);
+
+  // BENFORD
+  const benford = useMemo(() => {
+    const counts = Array(9).fill(0);
+    processed.forEach(d => {
+      const fd = String(Math.floor(d.exports))[0];
+      if (fd) counts[fd - 1]++;
+    });
+
+    return counts.map((c, i) => ({ digit: i + 1, value: c }));
+  }, [processed]);
+
+  // SANKEY
+  const sankeyData = useMemo(() => {
+    const nodes = [];
+    const links = [];
+    const idx = {};
+
+    const getIndex = name => {
+      if (!(name in idx)) {
+        idx[name] = nodes.length;
+        nodes.push({ name });
+      }
+      return idx[name];
+    };
+
+    processed.forEach(d => {
+      const o = getIndex(d.origin);
+      const e = getIndex(d.entity);
+      const dest = getIndex(d.dest);
+
+      links.push({ source: o, target: e, value: d.exports });
+      links.push({ source: e, target: dest, value: d.exports });
+    });
+
+    return { nodes, links };
+  }, [processed]);
+
+  const exportPDF = async () => {
+    const canvas = await html2canvas(reportRef.current);
+    const img = canvas.toDataURL("image/png");
+    const pdf = new jsPDF();
+    pdf.addImage(img, "PNG", 0, 0, 210, 297);
+    pdf.save("forensic-report.pdf");
+  };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
-      
-   {/* METRICS ROW */}
-<div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-    {/* 1. Wastage Slider (Keep as is) */}
-    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] shadow-sm">
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Wastage Tolerance</p>
-        <input 
-            type="range" min="0" max="25" value={wastage} 
-            onChange={(e) => setWastage(e.target.value)} 
-            className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-500" 
-        />
-        <div className="flex justify-between mt-2 text-[10px] font-bold text-emerald-600 uppercase">
-            <span>Current: {wastage}%</span>
-            <span>Margin: {Math.round(25-wastage)}%</span>
-        </div>
-    </div>
+    <div className="p-6 space-y-6" ref={reportRef}>
+      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="CSV URL" />
+      <button onClick={fetchCSV}>Load</button>
+      <button onClick={exportPDF}>Export PDF</button>
 
-    {/* 2. UPDATED: Ghost Volume (Now uses totalGhostVolume) */}
-    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
-        <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Ghost Volume</p>
-            <p className="text-2xl font-black text-red-600 mt-1">
-                {Math.round(totalGhostVolume).toLocaleString()}
-            </p>
-        </div>
-        <ShieldAlert className="text-red-500" size={32} />
-    </div>
+      {/* SMOKING GUN */}
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={processed}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="month" />
+          <YAxis />
+          <Tooltip />
+          <Line dataKey="inv" stroke="#10b981" />
+          <Line dataKey="cumOut" stroke="#ef4444" />
+        </LineChart>
+      </ResponsiveContainer>
 
-    {/* 3. NEW: Total Exports (Gives context to the Ghost Volume) */}
-    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
-        <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Exports</p>
-            <p className="text-2xl font-black text-black mt-1">
-                {Math.round(totalOutflow).toLocaleString()}
-            </p>
-        </div>
-        <BarChart3 className="text-slate-400" size={32} />
-    </div>
+      {/* ENTITY RANK */}
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={entityRanking}>
+          <XAxis dataKey="entity" />
+          <YAxis />
+          <Tooltip />
+          <Bar dataKey="risk" />
+        </BarChart>
+      </ResponsiveContainer>
 
-    {/* 4. Active Entities (Keep as is) */}
-    <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] flex justify-between items-center shadow-sm">
-        <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Entities</p>
-            <p className="text-2xl font-black text-emerald-600 mt-1">
-                {new Set(processedData.map(d => d.entity)).size}
-            </p>
-        </div>
-        <Activity className="text-emerald-500" size={32} />
-    </div>
-</div>
+      {/* BENFORD */}
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={benford}>
+          <XAxis dataKey="digit" />
+          <YAxis />
+          <Tooltip />
+          <Bar dataKey="value" />
+        </BarChart>
+      </ResponsiveContainer>
 
-           {/* SYNC PANEL - OBSIDIAN DARK THEME */}
-      <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
-        <div className="flex flex-col md:flex-row gap-6 items-end">
-          <div className="flex-1 space-y-2">
-            <label className="text-[10px] font-black uppercase text-emerald-400 tracking-[0.2em] flex items-center gap-2">
-              <Link size={12}/> Google Sheets Forensic Source (CSV)
-            </label>
-            <input 
-              type="text" 
-              value={sheetUrl}
-              onChange={(e) => setSheetUrl(e.target.value)}
-              placeholder="PASTE PUBLISHED URL..."
-              className="w-full bg-black/40 border-2 border-slate-800 p-4 rounded-2xl font-mono text-[11px] text-emerald-100 outline-none focus:border-emerald-500/50 transition-all placeholder:text-slate-700"
-            />
-          </div>
-          <button 
-            onClick={fetchSheetData}
-            disabled={loading}
-            className="bg-emerald-500 hover:bg-emerald-400 text-black px-10 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-30 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-          >
-            {loading ? 'ANALYZING...' : 'SYNC INTELLIGENCE'}
-          </button>
-        </div>
-      </div>
-      {/* 2. MACRO-FORENSIC SUITE (SMOKING GUN, BENFORD, SCATTER) */}
-      <div className="space-y-8 mt-8">
-        
-        {/* THE SMOKING GUN */}
-        <div className="bg-slate-900 border-2 border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
-          <div className="mb-8">
-            <h3 className="text-emerald-400 font-black text-[11px] uppercase tracking-[0.3em] flex items-center gap-2">
-              <TrendingUp size={14} /> Cumulative Precursor Burn (The Smoking Gun)
-            </h3>
-            <p className="text-slate-500 text-[10px] mt-2 font-bold uppercase tracking-widest">
-              Detects "Off-Book" production by tracking the total material pool vs total output.
-            </p>
-          </div>
-          <div className="h-[350px] w-full">
-            <ResponsiveContainer width="100%" height={400}>
-  <ComposedChart 
-    data={processedData} 
-    margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // Adds space so numbers aren't cut
-  >
-    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-    <Tooltip formatter={(value) => value.toLocaleString()} />  {/* ✅ CORRECT */}
-{/* Smoking Gun Axis */}
-<AreaChart data={processedData}>
-<XAxis 
-  dataKey="monthLabel"
-  tick={{ fill: "#94a3b8", fontSize: 12 }}
-/>
- <YAxis 
-  yAxisId="left"
-  tickFormatter={(v) => v.toLocaleString()}
-  tick={{ fill: "#94a3b8", fontSize: 12 }}
-/>
+      {/* SANKEY */}
+      <ResponsiveContainer width="100%" height={400}>
+        <Sankey data={sankeyData} nodePadding={50} linkCurvature={0.5}>
+          <SankeyTooltip />
+        </Sankey>
+      </ResponsiveContainer>
 
-<YAxis 
-  yAxisId="right"
-  orientation="right"
-  tickFormatter={(v) => v.toLocaleString()}
-  tick={{ fill: "#94a3b8", fontSize: 12 }}
-/>
-  
-  {/* The Green Area: This shows your legal warehouse capacity */}
-<Area 
-  yAxisId="left"
-  type="monotone"
-  dataKey="cumulativeInput"
-  stroke="#10b981"
-  fill="#10b981"
-/>
-
-<Line 
-  yAxisId="right"
-  type="monotone"
-  dataKey="cumulativeOutput"
-  stroke="#ef4444"
-  strokeWidth={3}
-/>
-<Legend 
-  verticalAlign="top"
-  height={36}
-  formatter={(value) => {
-    if (value === "cumulativeInput") return "Material Capacity"
-    if (value === "cumulativeOutput") return "Actual Exports"
-    return value
-  }}
-/>
-</AreaChart>
-<Area name="Mass Balance Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.1} stroke="#10b981" />
-<Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
-{/* Scatter Plot Axis (Fixes long numbers) */}
-<Area dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
-<Line dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
-  </ComposedChart>
-</ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* BENFORD'S LAW */}
-          <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
-            <h3 className="text-slate-800 font-black text-[11px] uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
-              <BarChart3 size={16} className="text-blue-600" /> Benford's Law (Integrity Audit)
-            </h3>
-            <div className="h-[250px] w-full">
-<ResponsiveContainer width="100%" height={300}>
-  <BarChart data={benfordAnalysis}>
-    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-    <XAxis dataKey="digit" stroke="#94a3b8" />
-    <YAxis stroke="#94a3b8" unit="%" />
-    <Tooltip formatter={(value) => `${value}%`} />
-    <Bar dataKey="actual" fill="#3b82f6" name="Reported %" radius={[4, 4, 0, 0]} />
-    <Line type="step" dataKey="ideal" stroke="#94a3b8" name="Expected %" strokeDasharray="5 5" />
-  </BarChart>
-</ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* PRICE-MASS SCATTER */}
-          <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
-            <h3 className="text-slate-800 font-black text-[11px] uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
-              <DollarSign size={16} className="text-emerald-600" /> Value-Mass Correlation
-            </h3>
-            <div className="h-[250px] w-full">
-              <ResponsiveContainer width="100%" height={300}>
-<ScatterChart margin={{ left: 40, bottom: 20 }}>
-<XAxis 
-  type="number" 
-  dataKey="tobaccoKG"
-  stroke="#94a3b8"
-  tickFormatter={(v) => {
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-    if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
-    return v;
-  }}
-/>
-
-<YAxis 
-  type="number" 
-  dataKey="outflow"
-  stroke="#94a3b8"
-  tickFormatter={(v) => {
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-    if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
-    return v;
-  }}
-/>
- <Tooltip 
-  cursor={{ strokeDasharray: '3 3' }}
-  formatter={(value) => value.toLocaleString()}
-/>
-  <Scatter name="Shipments" data={processedData} fill="#3b82f6" />
-</ScatterChart>
-</ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      </div>
-{/* 📍 ADD THE RISK MONITOR TABLE RIGHT HERE */}
-    <div className="mt-8 bg-slate-900 border border-slate-800 rounded-xl p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-white">Forensic Risk Monitor</h3>
-        <span className="text-xs font-mono text-slate-500 uppercase tracking-widest">
-          Continuous Audit Mode
-        </span>
-      </div>
-      
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-slate-400 border-b border-slate-800 text-xs uppercase">
-              <th className="pb-3">Reporting Period</th>
-              <th className="pb-3 text-center">Precursor Divergence</th>
-              <th className="pb-3 text-center">Transit Risk Score</th>
-              <th className="pb-3 text-right">Virtual Stamp Gap</th>
-            </tr>
-          </thead>
-          <tbody className="text-slate-300">
-            {processedData.map((row, i) => (
-              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                <td className="py-4 font-medium">{row.xAxisLabel}</td>
-                <td className="py-4 text-center">
-                  <span className={`px-2 py-1 rounded text-xs font-bold ${Math.abs(row.pdi) > 25 ? 'bg-orange-950 text-orange-400' : 'bg-slate-800 text-slate-400'}`}>
-                    {row.pdi}% {Math.abs(row.pdi) > 25 ? '⚠️' : ''}
-                  </span>
-                </td>
-                <td className="py-4">
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-20 bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full ${row.transitRiskScore > 50 ? 'bg-red-500' : 'bg-blue-500'}`} 
-                        style={{ width: `${row.transitRiskScore}%` }}
-                      />
-                    </div>
-                    <span className="text-xs font-mono">{row.transitRiskScore}</span>
-                  </div>
-                </td>
-                <td className="py-4 text-right font-mono">
-                  {row.stampGap > 0 ? (
-                    <span className="text-red-500">+{row.stampGap.toLocaleString()}</span>
-                  ) : (
-                    <span className="text-emerald-500">MATCHED</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* ANOMALIES */}
+      <div>
+        <h3>Anomalies</h3>
+        {anomalies.map((a, i) => (
+          <div key={i}>{a.entity} spike</div>
+        ))}
       </div>
     </div>
-
-    {/* 📍 ADD THE ORIGIN/DESTINATION INTELLIGENCE TILES BELOW THE TABLE */}
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-      <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
-        <h4 className="text-xs font-bold text-slate-500 uppercase mb-4">Origin Intelligence (Precursor Mass)</h4>
-        <div className="space-y-3">
-          {originAnalysis.map((item, i) => (
-            <div key={i} className="flex justify-between items-center">
-              <span className="text-sm text-slate-300">{item.name}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-mono text-slate-500">{Math.round(item.value).toLocaleString()} kg</span>
-                <div className="w-32 bg-slate-800 h-1 rounded-full">
-                  <div className="bg-blue-500 h-full" style={{ width: `${(item.value / processedData[0].tobaccoKG) * 100}%` }} />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl">
-        <h4 className="text-xs font-bold text-slate-500 uppercase mb-4">System Health & Decay</h4>
-        <div className="space-y-4 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-400">Inventory Degradation Rate</span>
-            <span className="text-orange-500">2% / Month</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">PDI Threshold</span>
-            <span className="text-slate-300">+/- 25%</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Total Precursor Divergence</span>
-            <span className={avgPDI > 25 ? "text-red-500" : "text-emerald-500"}>{avgPDI}%</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    </div> // Closes the main return div
   );
-}; // Closes the ForensicMonitor function
-
-export default ForensicMonitor; // Final export
+}
