@@ -355,8 +355,7 @@ const benford = useMemo(() => {
           </ResponsiveContainer>
         </div>
       </div>
-      
-{/* ✅ SCATTER CHART: CORRELATION ANALYSIS */}
+{/* SCATTER CHART: CORRELATION ANALYSIS */}
 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
   <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">
     Mass vs Output Correlation
@@ -365,22 +364,30 @@ const benford = useMemo(() => {
   <ResponsiveContainer width="100%" height="90%">
     <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
       <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-      <XAxis 
-        type="number" 
-        dataKey="inventoryPool" 
-        name="Inventory" 
-        stroke="#475569" 
+      
+      <XAxis
+        type="number"
+        dataKey="inventoryPool"
+        name="Inventory"
+        stroke="#475569"
         fontSize={10}
       />
-      <YAxis 
-        type="number" 
-        dataKey="outflow" // 🔥 This MUST match the 'outflow' key in your logic
-        name="Exports" 
-        stroke="#475569" 
+      
+      <YAxis
+        type="number"
+        dataKey="outflow" // Make sure this key matches your data
+        name="Exports"
+        stroke="#475569"
         fontSize={10}
       />
+      
       <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-      <Scatter name="Monthly Correlation" data={processedData} fill="#38bdf8" />
+      
+      <Scatter
+        name="Monthly Correlation"
+        data={processedData} // Ensure processedData is an array of objects with keys: inventoryPool & outflow
+        fill="#38bdf8"
+      />
     </ScatterChart>
   </ResponsiveContainer>
 </div>
