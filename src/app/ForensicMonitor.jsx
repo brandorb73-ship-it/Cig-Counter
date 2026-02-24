@@ -19,17 +19,17 @@ export default function ForensicEngineV3() {
       const rows = text.split("\n").filter(row => row.trim() !== "").slice(1);
 
       const parsed = rows.map(r => {
-        const c = r.split(",").map(field => field.trim());
-        return {
-          entity: c[0] || "Unknown",
-          month: c[1] || "",
-          year: c[2] || "",
-          tobacco: parseFloat(c[3]) || 0,
-          exports: parseFloat(c[15]) || 0,
-          origin: c[5] || "Unknown",
-          dest: c[14] || "Unknown"
-        };
-      });
+  const c = r.split(",").map(field => field.trim());
+  return {
+    entity: c[0] || "Unknown",
+    month: c[1] || "",
+    year: c[2] || "",
+    tobacco: parseFloat(c[3]) || 0,
+    exports: parseFloat(c[15]) || 0, // Ensure column 16 (index 15) has your data
+    origin: c[5] || "Unknown",
+    dest: c[14] || "Unknown"
+  };
+});
       setData(parsed);
     } catch (err) {
       console.error("Fetch error:", err);
@@ -48,79 +48,59 @@ export default function ForensicEngineV3() {
 
   const monthOrder = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
 
-  // 🔥 STEP 1: GROUP BY MONTH (CRITICAL FIX)
+  // 🔥 1. GROUP BY MONTH WITHOUT LOSING ENTITY DATA
   const grouped = {};
   data.forEach(d => {
     const key = `${(d.month || "").toLowerCase()}-${d.year}`;
     if (!grouped[key]) {
       grouped[key] = {
-        month: d.month,
-        year: d.year,
+        ...d, // Keep original row properties (origin, dest, entity)
         tobacco: 0,
         exports: 0,
-        entity: d.entity,
-        origin: d.origin,
-        dest: d.dest
       };
     }
     grouped[key].tobacco += n(d.tobacco);
     grouped[key].exports += n(d.exports);
   });
 
-  const aggregatedData = Object.values(grouped);
-
-  // 🔥 STEP 2: SORT PROPERLY
-  const sorted = aggregatedData.sort((a,b) => {
-    const yA = +a.year || 0;
-    const yB = +b.year || 0;
+  const sorted = Object.values(grouped).sort((a,b) => {
+    const yA = +a.year || 0, yB = +b.year || 0;
     const mA = monthOrder[(a.month||"").toLowerCase()] || 0;
     const mB = monthOrder[(b.month||"").toLowerCase()] || 0;
     return yA !== yB ? yA - yB : mA - mB;
   });
 
-  // 🔥 STEP 3: FORENSIC ENGINE (FIXED VARIABLES)
   let invPool = 0;
   let cumOut = 0;
 
   return sorted.map((d) => {
     const eff = (100 - wastage) / 100;
-    const monthShort = String(d.month || "").substring(0,3);
-
-    // ✅ USE AGGREGATED VALUES
-    const exports = d.exports; 
-    const tKG = d.tobacco;
-
-    // ✅ PRODUCTION CAPACITY
-    const monthlyCapacity = (tKG * eff) / 0.0007;
-
-    // ✅ INVENTORY DECAY
-    invPool = (invPool * 0.98) + monthlyCapacity;
-
-    // ✅ CUMULATIVE EXPORTS
-    cumOut += exports;
-
-    // ✅ STAMP GAP
-    const stampGap = Math.max(0, cumOut - invPool);
-
-    // ✅ TRUE DIVERGENCE
-    const pdi = invPool > 0 ? ((invPool - cumOut) / invPool) * 100 : 0;
+    
+    // ✅ CORE MATH (Using Aggregated Values)
+    const monthlyCapacity = (d.tobacco * eff) / 0.0007;
+    invPool = (invPool * 0.98) + monthlyCapacity; // Inventory Decay
+    cumOut += d.exports;
 
     // ✅ BENFORD (Fixed Digit Extraction)
-    const firstDigit = exports > 0 ? parseInt(String(Math.floor(exports))[0]) : 0;
+    const firstDigit = d.exports > 0 ? parseInt(String(Math.floor(d.exports))[0]) : 0;
+
+    // ✅ RE-ESTABLISH MISSING ENTERPRISE KEYS
+    const pdi = invPool > 0 ? ((invPool - cumOut) / invPool) * 100 : 0;
+    const stampGap = Math.max(0, cumOut - invPool);
+    const transitRiskScore = d.exports > (invPool * 1.1) ? 85 : 15;
 
     return {
       ...d,
-      xAxisLabel: `${monthShort} ${d.year}`,
+      xAxisLabel: `${(d.month || "").substring(0,3)} ${d.year}`,
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOut),
       inventoryPool: Math.round(invPool),
       monthlyCapacity: Math.round(monthlyCapacity),
-      outflow: Math.round(exports),
+      outflow: Math.round(d.exports),
       stampGap: Math.round(stampGap),
       pdi: Math.round(pdi),
-      firstDigit,
-      // Transit score for the Risk Table
-      transitRiskScore: exports > 0 ? 15 : 0 
+      transitRiskScore,
+      firstDigit
     };
   });
 }, [data, wastage]);
@@ -207,26 +187,79 @@ const benford = useMemo(() => {
   return (
     <div className="p-6 space-y-8 bg-slate-950 min-h-screen text-slate-200">
 
-      {/* SYNC PANEL */}
-      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-4 items-end">
-        <div className="flex-1 space-y-2">
-          <label className="text-[10px] font-bold uppercase text-emerald-400 tracking-widest">Forensic Data Source (CSV URL)</label>
-          <input 
-            className="w-full bg-black border border-slate-800 p-3 rounded-xl text-xs text-emerald-100 outline-none focus:border-emerald-500/50"
-            value={url} 
-            onChange={e => setUrl(e.target.value)} 
-            placeholder="Paste CSV link here..." 
-          />
-        </div>
-        <button 
-          onClick={fetchCSV}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-xl font-bold text-xs uppercase transition-all"
-        >
-          Sync Intelligence
-        </button>
-      </div>
+{/* SYNC PANEL */}
+<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-6 items-end">
+  <div className="flex-[2] space-y-2">
+    <label className="text-[10px] font-bold uppercase text-emerald-400 tracking-widest">Forensic Data Source (CSV URL)</label>
+    <input 
+      className="w-full bg-black border border-slate-800 p-3 rounded-xl text-xs text-emerald-100 outline-none focus:border-emerald-500/50"
+      value={url} 
+      onChange={e => setUrl(e.target.value)} 
+      placeholder="Paste CSV link here..." 
+    />
+  </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+  {/* WASTAGE SLIDER INTEGRATED */}
+  <div className="flex-1 space-y-2 min-w-[150px]">
+    <label className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">Wastage Factor: {wastage}%</label>
+    <input 
+      type="range" 
+      min="0" 
+      max="25" 
+      step="0.5"
+      value={wastage} 
+      onChange={e => setWastage(parseFloat(e.target.value))} 
+      className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-orange-500" 
+    />
+  </div>
+
+  <button 
+    onClick={fetchCSV}
+    className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-xl font-bold text-xs uppercase transition-all shadow-lg shadow-emerald-900/20"
+  >
+    Sync Intelligence
+  </button>
+</div>
+        {/* ✅ KPI SNAPSHOT ROW */}
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+  
+  {/* STAMP GAP CARD */}
+  <div className="bg-slate-900 p-6 rounded-2xl border border-red-900/40 shadow-lg shadow-red-900/10">
+    <div className="flex justify-between items-start mb-2">
+      <h3 className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em]">
+        Volumetric Stamp Gap
+      </h3>
+      <span className="text-[10px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded border border-red-500/20">
+        High Risk
+      </span>
+    </div>
+    <p className="text-3xl font-black text-white tracking-tight">
+      {processedData.length > 0 
+        ? processedData[processedData.length - 1].stampGap.toLocaleString() 
+        : "0"}
+      <span className="text-xs text-slate-500 ml-2 font-normal">Units</span>
+    </p>
+    <p className="text-[9px] text-slate-500 mt-2 italic leading-relaxed">
+      Total discrepancy between raw material capacity and declared trade exports.
+    </p>
+  </div>
+
+  {/* CAPACITY UTILIZATION CARD */}
+  <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+    <h3 className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] mb-2">
+      Inventory Integrity
+    </h3>
+    <p className="text-3xl font-black text-white tracking-tight">
+      {processedData.length > 0 
+        ? Math.round((processedData[processedData.length - 1].cumulativeOutput / processedData[processedData.length - 1].cumulativeInput) * 100) 
+        : "0"}%
+    </p>
+    <p className="text-[9px] text-slate-500 mt-2 italic">
+      Ratio of output vs. legal input capacity.
+    </p>
+  </div>
+
+</div>
         
         {/* SMOKING GUN: MATERIAL BALANCE */}
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
@@ -312,11 +345,13 @@ const benford = useMemo(() => {
           <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Data Integrity (Benford Analysis)</h3>
           <ResponsiveContainer width="100%" height="90%">
             <BarChart data={benford}>
-              <XAxis dataKey="digit" stroke="#475569" />
-              <YAxis stroke="#475569" />
-              <Tooltip />
-              <Bar dataKey="actual" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
+  <XAxis dataKey="digit" stroke="#475569" fontSize={12} />
+  <YAxis stroke="#475569" fontSize={10} />
+  <Tooltip cursor={{fill: 'transparent'}} />
+  
+  {/* Actual Counts from your CSV */}
+  <Bar dataKey="actual" fill="#6366f1" radius={[4, 4, 0, 0]} name="Frequency" />
+</BarChart>
           </ResponsiveContainer>
         </div>
       </div>
