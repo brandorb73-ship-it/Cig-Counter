@@ -301,31 +301,48 @@ const originAnalysis = useMemo(() => {
     <Tooltip formatter={(value) => value.toLocaleString()} />  {/* ✅ CORRECT */}
 {/* Smoking Gun Axis */}
 <AreaChart data={processedData}>
-  <XAxis 
-    dataKey="xAxisLabel"   // Matches the logic above
-    type="category"        // FORCES the name to show, stops the "formula" bug
-    stroke="#64748b" 
-    fontSize={10} 
-    interval={0}           // Shows every month (Jan, Feb, Mar...)
-  />
-  <YAxis stroke="#64748b" fontSize={10} />
+<XAxis 
+  dataKey="monthLabel"
+  tick={{ fill: "#94a3b8", fontSize: 12 }}
+/>
+ <YAxis 
+  yAxisId="left"
+  tickFormatter={(v) => v.toLocaleString()}
+  tick={{ fill: "#94a3b8", fontSize: 12 }}
+/>
+
+<YAxis 
+  yAxisId="right"
+  orientation="right"
+  tickFormatter={(v) => v.toLocaleString()}
+  tick={{ fill: "#94a3b8", fontSize: 12 }}
+/>
   
   {/* The Green Area: This shows your legal warehouse capacity */}
-  <Area 
-    type="monotone" 
-    dataKey="in"           // Matches the 'in' we added to logic
-    stroke="#10b981" 
-    fill="#10b981" 
-    fillOpacity={0.1} 
-  />
-  
-  {/* The Red Line: This shows the actual outflow from the CSV */}
-  <Line 
-    type="monotone" 
-    dataKey="out"          // Matches the 'out' we added to logic
-    stroke="#ef4444" 
-    strokeWidth={3} 
-  />
+<Area 
+  yAxisId="left"
+  type="monotone"
+  dataKey="cumulativeInput"
+  stroke="#10b981"
+  fill="#10b981"
+/>
+
+<Line 
+  yAxisId="right"
+  type="monotone"
+  dataKey="cumulativeOutput"
+  stroke="#ef4444"
+  strokeWidth={3}
+/>
+<Legend 
+  verticalAlign="top"
+  height={36}
+  formatter={(value) => {
+    if (value === "cumulativeInput") return "Material Capacity"
+    if (value === "cumulativeOutput") return "Actual Exports"
+    return value
+  }}
+/>
 </AreaChart>
 <Area name="Mass Balance Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.1} stroke="#10b981" />
 <Line name="Actual Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={3} dot={true} />
