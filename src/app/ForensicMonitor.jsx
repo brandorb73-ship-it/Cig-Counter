@@ -12,31 +12,37 @@ export default function ForensicEngineV3() {
   const [url, setUrl] = useState("");
   const [wastage, setWastage] = useState(5);
 
-  const fetchCSV = async () => {
-    try {
-      const res = await fetch(url);
-      const text = await res.text();
-      const rows = text.split("\n").filter(row => row.trim() !== "").slice(1);
+const fetchCSV = async () => {
+  try {
+    const res = await fetch(url);
+    const text = await res.text();
+    const rows = text.split("\n").filter(row => row.trim() !== "").slice(1);
 
-      const parsed = rows.map(r => {
-  const c = r.split(",").map(field => field.trim());
-  return {
-    entity: c[0] || "Unknown",
-    month: c[1] || "",
-    year: c[2] || "",
-    tobacco: parseFloat(c[3]) || 0,
-    exports: parseFloat(c[15]) || 0, // Ensure column 16 (index 15) has your data
-    origin: c[5] || "Unknown",
-    dest: c[14] || "Unknown"
-  };
-});
-      setData(parsed);
-    } catch (err) {
-      console.error("Fetch error:", err);
-      alert("Check your CSV URL and ensure it is published as a CSV.");
-    }
-  };
+    const parsed = rows.map(r => {
+      const c = r.split(",").map(field => field.trim());
+      
+      // Cleans "1,000,000" into 1000000
+      const cleanNumeric = (val) => {
+        if (!val) return 0;
+        const cleaned = val.replace(/[^\d.-]/g, "");
+        return parseFloat(cleaned) || 0;
+      };
 
+      return {
+        entity: c[0] || "Unknown",
+        month: c[1] || "",
+        year: c[2] || "",
+        tobacco: cleanNumeric(c[3]),  // Column D (index 3)
+        exports: cleanNumeric(c[15]), // Column P (index 15) - Cigarette Exports
+        origin: c[5] || "Unknown",
+        dest: c[14] || "Unknown"
+      };
+    });
+    setData(parsed);
+  } catch (err) {
+    console.error("Fetch error:", err);
+  }
+};
  const processedData = useMemo(() => {
   if (!data || data.length === 0) return [];
 
@@ -261,63 +267,40 @@ const benford = useMemo(() => {
 
 </div>
         
-        {/* SMOKING GUN: MATERIAL BALANCE */}
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
-          <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Smoking Gun: Material Balance</h3>
-          <ResponsiveContainer width="100%" height={400}>
-  <ComposedChart data={processedData}>
-    
-    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-
-    <XAxis 
-      dataKey="xAxisLabel"
-      tick={{ fill: "#94a3b8", fontSize: 12 }}
-    />
-
-    <YAxis 
-      yAxisId="left"
-      tickFormatter={(v)=>v.toLocaleString()}
-      tick={{ fill: "#94a3b8" }}
-    />
-
-    <YAxis 
-      yAxisId="right"
-      orientation="right"
-      tickFormatter={(v)=>v.toLocaleString()}
-      tick={{ fill: "#94a3b8" }}
-    />
-
-    <Tooltip
-      formatter={(v,name)=>[
-        v.toLocaleString(),
-        name === "cumulativeInput" 
-          ? "Material Capacity"
-          : "Actual Exports"
-      ]}
-    />
-
-    <Legend />
-
-    <Area
-      yAxisId="left"
-      dataKey="cumulativeInput"
-      stroke="#10b981"
-      fill="#10b981"
-      fillOpacity={0.2}
-      name="Material Pool"
-    />
-
-    <Line
-      yAxisId="right"
-      dataKey="cumulativeOutput"
-      stroke="#ef4444"
-      strokeWidth={3}
-      name="Exports"
-    />
-
-  </ComposedChart>
-</ResponsiveContainer>
-        </div>
+{/* ✅ SMOKING GUN: CUMULATIVE FLOW */}
+<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[450px]">
+  <h3 className="text-sm font-bold mb-4 uppercase text-slate-400 tracking-widest">
+    Forensic Mass Balance (Smoking Gun)
+  </h3>
+  <ResponsiveContainer width="100%" height="90%">
+    <ComposedChart data={processedData}>
+      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+      <XAxis dataKey="xAxisLabel" stroke="#475569" fontSize={10} />
+      <YAxis stroke="#475569" fontSize={10} tickFormatter={v => v.toLocaleString()} />
+      <Tooltip contentStyle={{ background: '#0f172a', border: 'none' }} />
+      <Legend verticalAlign="top" height={36}/>
+      
+      {/* SHADED AREA: Physical Material Limit */}
+      <Area 
+        name="Material Capacity" 
+        dataKey="cumulativeInput" 
+        fill="#10b981" 
+        fillOpacity={0.1} 
+        stroke="#10b981" 
+        strokeDasharray="5 5" 
+      />
+      
+      {/* SOLID LINE: Actual Declared Exports */}
+      <Line 
+        name="Actual Exports" 
+        dataKey="cumulativeOutput" 
+        stroke="#ef4444" 
+        strokeWidth={3} 
+        dot={{ r: 4 }} 
+      />
+    </ComposedChart>
+  </ResponsiveContainer>
+</div>
         
 {/* INVENTORY DECAY */}
 <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
