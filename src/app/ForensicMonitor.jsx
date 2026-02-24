@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, 
-  CartesianGrid, BarChart, Bar, Legend, Cell, Sankey, Tooltip as SankeyTooltip
+  CartesianGrid, BarChart, Bar, Legend, Cell, Sankey, Tooltip as SankeyTooltip, LineChart,
 } from "recharts";
 import { ScatterChart, Scatter } from "recharts";
 
