@@ -354,7 +354,6 @@ const benford = useMemo(() => {
 </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
 {/* SCATTER CHART: CORRELATION ANALYSIS */}
 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
   <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">
