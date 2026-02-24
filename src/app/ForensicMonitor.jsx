@@ -55,19 +55,22 @@ const fetchCSV = async () => {
   const monthOrder = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
 
   // 🔥 1. GROUP BY MONTH WITHOUT LOSING ENTITY DATA
-  const grouped = {};
-  data.forEach(d => {
-    const key = `${(d.month || "").toLowerCase()}-${d.year}`;
-    if (!grouped[key]) {
-      grouped[key] = {
-        ...d, // Keep original row properties (origin, dest, entity)
-        tobacco: 0,
-        exports: 0,
-      };
-    }
-    grouped[key].tobacco += n(d.tobacco);
-    grouped[key].exports += n(d.exports);
-  });
+const grouped = {};
+data.forEach(d => {
+  // Use entity + month + year to ensure we don't accidentally merge everything into one month
+  const key = `${d.entity}-${d.month}-${d.year}`.toLowerCase();
+  
+  if (!grouped[key]) {
+    grouped[key] = { 
+      ...d, 
+      tobacco: 0, 
+      exports: 0 
+    };
+  }
+  // Ensure we are adding, not replacing
+  grouped[key].tobacco += n(d.tobacco);
+  grouped[key].exports += n(d.exports);
+});
 
   const sorted = Object.values(grouped).sort((a,b) => {
     const yA = +a.year || 0, yB = +b.year || 0;
@@ -273,32 +276,33 @@ const benford = useMemo(() => {
     Forensic Mass Balance (Smoking Gun)
   </h3>
   <ResponsiveContainer width="100%" height="90%">
-    <ComposedChart data={processedData}>
-      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-      <XAxis dataKey="xAxisLabel" stroke="#475569" fontSize={10} />
-      <YAxis stroke="#475569" fontSize={10} tickFormatter={v => v.toLocaleString()} />
-      <Tooltip contentStyle={{ background: '#0f172a', border: 'none' }} />
-      <Legend verticalAlign="top" height={36}/>
-      
-      {/* SHADED AREA: Physical Material Limit */}
-      <Area 
-        name="Material Capacity" 
-        dataKey="cumulativeInput" 
-        fill="#10b981" 
-        fillOpacity={0.1} 
-        stroke="#10b981" 
-        strokeDasharray="5 5" 
-      />
-      
-      {/* SOLID LINE: Actual Declared Exports */}
-      <Line 
-        name="Actual Exports" 
-        dataKey="cumulativeOutput" 
-        stroke="#ef4444" 
-        strokeWidth={3} 
-        dot={{ r: 4 }} 
-      />
-    </ComposedChart>
+   <ComposedChart 
+  data={processedData} 
+  margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // ✅ Extra bottom margin for X-Axis labels
+>
+  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+  
+  <XAxis 
+    dataKey="xAxisLabel" 
+    stroke="#cbd5e1" // ✅ Brighter text (Slate 300)
+    fontSize={11} 
+    angle={-45}      // ✅ Tilt labels so they don't overlap/cut
+    textAnchor="end" 
+    interval={0} 
+  />
+  
+  <YAxis 
+    stroke="#cbd5e1" // ✅ Brighter text
+    fontSize={11} 
+    tickFormatter={v => v.toLocaleString()} 
+  />
+
+  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', color: '#fff' }} />
+  <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
+  
+  <Area name="Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
+  <Line name="Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={4} dot={{ r: 4, fill: '#ef4444' }} />
+</ComposedChart>
   </ResponsiveContainer>
 </div>
         
@@ -306,22 +310,17 @@ const benford = useMemo(() => {
 <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
   <h3 className="text-slate-800 font-black text-[11px] uppercase tracking-[0.3em] mb-6">
     Inventory Decay (Drying Effect)
-  </h3>
-
-  <div className="h-[250px] w-full">
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={processedData}>
-        <XAxis dataKey="xAxisLabel" />
-        <YAxis />
-        <Tooltip />
-        <Line 
-          dataKey="inventoryPool" 
-          stroke="#f59e0b"
-          strokeWidth={2}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  </div>
+<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
+  <h3 className="text-xs font-bold uppercase text-slate-400 mb-6">Inventory Aging (Drying Effect)</h3>
+  <ResponsiveContainer width="100%" height="80%">
+    <LineChart data={processedData} margin={{ bottom: 50 }}>
+      <XAxis dataKey="xAxisLabel" stroke="#cbd5e1" fontSize={10} angle={-45} textAnchor="end" />
+      <YAxis stroke="#cbd5e1" fontSize={10} />
+      <Tooltip />
+      <Line dataKey="inventoryPool" stroke="#f59e0b" strokeWidth={3} dot={false} />
+    </LineChart>
+  </ResponsiveContainer>
+</div>
 </div>
         {/* BENFORD'S LAW DISTRIBUTION */}
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
