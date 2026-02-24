@@ -53,85 +53,94 @@ export default function ForensicEngineV3() {
     jul:7,aug:8,sep:9,oct:10,nov:11,dec:12
   };
 
-  const sorted = [...data].sort((a,b)=>{
-    const yA = +a.year || 0;
-    const yB = +b.year || 0;
-    const mA = monthOrder[(a.month||"").toLowerCase()] || 0;
-    const mB = monthOrder[(b.month||"").toLowerCase()] || 0;
-    return yA !== yB ? yA - yB : mA - mB;
-  });
+ // 🔥 STEP 1: GROUP BY MONTH (CRITICAL FIX)
+const grouped = {};
 
-  let invPool = 0;
-  let cumOut = 0;
+data.forEach(d => {
+  const key = `${d.month}-${d.year}`;
 
-  return sorted.map((d) => {
-    const eff = (100 - wastage) / 100;
-
-    const monthShort = String(d.month || "").substring(0,3);
-
-    const tobaccoVal = n(d.tobacco);
-    const tobaccoUnit = String(d.t_unit || "kg").toLowerCase();
-
-    const tKG = tobaccoVal * (units[tobaccoUnit] || 1);
-
-    // 🔥 PRODUCTION CAPACITY
-    const monthlyCapacity = (tKG * eff) / 0.0007;
-
-    const exports = n(
-      d["Cigarette Exports"] ||
-      d.outflow ||
-      d.exports
-    );
-
-    // 🔥 INVENTORY DECAY MODEL
-    invPool = (invPool * 0.98) + monthlyCapacity;
-
-    // 🔥 ROLLING MASS BALANCE
-    cumOut += exports;
-
-    // 🔥 STAMP GAP
-    const stampGap = Math.max(0, cumOut - invPool);
-
-    // 🔥 PDI (Precursor Divergence)
-    const pdi = invPool > 0 
-      ? ((monthlyCapacity - exports) / monthlyCapacity) * 100
-      : 0;
-
-    // 🔥 TRANSIT RISK
-    const riskHubs = ["SINGAPORE","DUBAI","PANAMA","BELIZE","CYPRUS"];
-
-    const route = String(d.dest || "").toUpperCase();
-    const isHighRisk = riskHubs.some(h => route.includes(h));
-
-    const transitRiskScore = isHighRisk ? 80 : 20;
-
-    // BENFORD
-    const firstDigit = exports > 0 
-      ? parseInt(exports.toString()[0]) 
-      : 0;
-
-    return {
-      ...d,
-      xAxisLabel: `${monthShort} ${d.year}`,
-
-      cumulativeInput: Math.round(invPool),
-      cumulativeOutput: Math.round(cumOut),
-
-      inventoryPool: Math.round(invPool),
-      monthlyCapacity: Math.round(monthlyCapacity),
-
-      outflow: Math.round(exports),
-
-      stampGap,
-      pdi: Math.round(pdi),
-
-      transitRiskScore,
-      isHighRisk,
-
-      firstDigit
+  if (!grouped[key]) {
+    grouped[key] = {
+      month: d.month,
+      year: d.year,
+      tobacco: 0,
+      exports: 0,
+      rows: []
     };
-  });
+  }
 
+  grouped[key].tobacco += n(d.tobacco);
+  grouped[key].exports += n(d.exports);
+  grouped[key].rows.push(d); // keep raw rows for intelligence later
+});
+
+const aggregatedData = Object.values(grouped);
+
+// 🔥 STEP 2: SORT PROPERLY
+const sorted = aggregatedData.sort((a,b)=>{
+  const yA = +a.year || 0;
+  const yB = +b.year || 0;
+  const mA = monthOrder[(a.month||"").toLowerCase()] || 0;
+  const mB = monthOrder[(b.month||"").toLowerCase()] || 0;
+  return yA !== yB ? yA - yB : mA - mB;
+});
+
+// 🔥 STEP 3: FORENSIC ENGINE
+let invPool = 0;
+let cumOut = 0;
+
+return sorted.map((d) => {
+  const eff = (100 - wastage) / 100;
+
+  const monthShort = String(d.month || "").substring(0,3);
+
+  const tobaccoVal = n(d.tobacco);
+  const tKG = tobaccoVal; // already aggregated
+
+  // ✅ PRODUCTION CAPACITY
+  const monthlyCapacity = (tKG * eff) / 0.0007;
+
+  // ✅ EXPORTS (NOW CORRECT)
+  const exports = n(d.exports);
+
+  // ✅ INVENTORY DECAY
+  invPool = (invPool * 0.98) + monthlyCapacity;
+
+  // ✅ CUMULATIVE EXPORTS
+  cumOut += exports;
+
+  // ✅ STAMP GAP
+  const stampGap = Math.max(0, cumOut - invPool);
+
+  // ✅ TRUE DIVERGENCE (FIXED)
+  const pdi = invPool > 0
+    ? ((invPool - cumOut) / invPool) * 100
+    : 0;
+
+  // ✅ BENFORD
+  const firstDigit = exports > 0
+    ? parseInt(exports.toString()[0])
+    : 0;
+
+  return {
+    ...d,
+
+    xAxisLabel: `${monthShort} ${d.year}`,
+
+    cumulativeInput: Math.round(invPool),
+    cumulativeOutput: Math.round(cumOut),
+
+    inventoryPool: Math.round(invPool),
+    monthlyCapacity: Math.round(monthlyCapacity),
+
+    outflow: Math.round(exports),
+
+    stampGap: Math.round(stampGap),
+    pdi: Math.round(pdi),
+
+    firstDigit
+  };
+});
 }, [data, wastage]);
   // ANOMALY TICKER LOGIC
 const anomalies = useMemo(() => {
