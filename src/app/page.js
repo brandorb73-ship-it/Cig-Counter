@@ -549,7 +549,6 @@ export default function ObsidianPrimeV12Final() {
                    <button onClick={() => setActiveTab('country')} className="w-full bg-slate-900 py-3 rounded-xl text-white font-black text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all">Reload Analysis</button>
                 </div>
               ))}
-              )}
             </div>
           )}
         </div>
