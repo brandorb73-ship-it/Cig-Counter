@@ -13,6 +13,10 @@ export default function ForensicEngineV3() {
   const [url, setUrl] = useState("");
   const [wastage, setWastage] = useState(5);
 
+const formatNumber = (num) => {
+    if (num === null || num === undefined) return "0";
+    return Number(num).toLocaleString("en-US");
+  };
 const fetchCSV = async () => {
   try {
     const res = await fetch(url);
@@ -83,9 +87,12 @@ data.forEach(d => {
  const key = `${d.entity}-${d.month}-${d.year}`;
   
 if (!grouped[key]) {
-  grouped[key] = { 
+  grouped[key] = {
     month: d.month,
     year: d.year,
+    entity: d.entity,
+    origin: d.origin,
+    dest: d.dest,
     tobacco: 0,
     tow: 0,
     paper: 0,
@@ -127,7 +134,7 @@ cumOut += d.exports;
 
     // ✅ RE-ESTABLISH MISSING ENTERPRISE KEYS
     const pdi = invPool > 0 ? ((invPool - cumOut) / invPool) * 100 : 0;
-    const stampGap = Math.max(0, cumOut - invPool);
+   const stampGap = Math.abs(cumOut - invPool);
     const transitRiskScore = d.exports > (invPool * 1.1) ? 85 : 15;
 
     return {
@@ -153,47 +160,25 @@ const sankeyData = useMemo(() => {
   const nodeMap = {};
   const linkMap = {};
 
-  const addNode = (name, type) => {
-    if (!nodeMap[name]) {
-      nodeMap[name] = { name, type };
-    }
+  const addNode = (name) => {
+    if (!nodeMap[name]) nodeMap[name] = { name };
   };
 
   data.forEach(d => {
-    const entity = String(d.entity || "Unknown Entity");
-    const dest = String(d.dest || "Unknown Destination");
+    const origin = d.origin || "Unknown Origin";
+    const entity = d.entity || "Unknown Entity";
+    const dest = d.dest || "Unknown Destination";
+    const value = Math.max(1, Number(d.exports) || 1);
 
-    const materials = [
-      { name: d.tobaccoOrigin, weight: d.tobacco },
-      { name: d.towOrigin, weight: d.tow },
-      { name: d.paperOrigin, weight: d.paper },
-      { name: d.filterOrigin, weight: d.filter }
-    ];
+    addNode(origin);
+    addNode(entity);
+    addNode(dest);
 
-    const exports = Math.max(1, Number(d.exports) || 1);
+    const oe = `${origin}->${entity}`;
+    const ed = `${entity}->${dest}`;
 
-    materials.forEach(m => {
-      if (!m.name) return;
-
-      const origin = String(m.name);
-
-      addNode(origin, "origin");
-      addNode(entity, "entity");
-      addNode(dest, "destination");
-
-      // 🔥 risk logic
-      let risk = 1;
-      if (origin !== dest) risk += 0.5;
-      if (exports > (m.weight * 1.2)) risk += 0.5;
-
-      const value = Math.max(1, (m.weight || 1) * risk);
-
-      const oe = `${origin}->${entity}`;
-      const ed = `${entity}->${dest}`;
-
-      linkMap[oe] = (linkMap[oe] || 0) + value;
-      linkMap[ed] = (linkMap[ed] || 0) + exports;
-    });
+    linkMap[oe] = (linkMap[oe] || 0) + value;
+    linkMap[ed] = (linkMap[ed] || 0) + value;
   });
 
   const nodes = Object.values(nodeMap);
@@ -213,8 +198,8 @@ const sankeyData = useMemo(() => {
   });
 
   return { nodes, links };
-
 }, [data]);
+  
   // ANOMALY TICKER LOGIC
 const anomalies = useMemo(() => {
   return processedData.filter((d, i, arr) => {
@@ -307,9 +292,12 @@ const benford = useMemo(() => {
       Inventory Integrity
     </h3>
     <p className="text-3xl font-black text-white tracking-tight">
-      {processedData.length > 0 
-        ? Math.round((processedData[processedData.length - 1].cumulativeOutput / processedData[processedData.length - 1].cumulativeInput) * 100) 
-        : "0"}%
+{processedData.length > 0 && processedData[processedData.length - 1].cumulativeInput > 0
+  ? Math.round(
+      (processedData[processedData.length - 1].cumulativeOutput /
+      processedData[processedData.length - 1].cumulativeInput) * 100
+    )
+  : "0"}%
     </p>
     <p className="text-[9px] text-slate-500 mt-2 italic">
       Ratio of output vs. legal input capacity.
@@ -340,12 +328,14 @@ const benford = useMemo(() => {
 
 <YAxis
   stroke="#e2e8f0"
+  tickFormatter={formatNumber}
   tick={{ fill: "#e2e8f0", fontSize: 11 }}
   axisLine={{ stroke: "#94a3b8" }}
   tickLine={{ stroke: "#94a3b8" }}
 />
 
-  <Tooltip
+<Tooltip
+  formatter={(value) => formatNumber(value)}
   contentStyle={{
     backgroundColor: "#020617",
     border: "1px solid #334155",
@@ -358,6 +348,15 @@ const benford = useMemo(() => {
   <Line name="Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={4} dot={{ r: 4, fill: '#ef4444' }} />
 </ComposedChart>
   </ResponsiveContainer>
+<p className="text-[10px] text-slate-500 mt-3 italic">
+  {processedData.length > 1
+    ? `Exports are ${processedData[processedData.length - 1].cumulativeOutput > processedData[processedData.length - 1].cumulativeInput ? "exceeding" : "within"} modeled capacity. This suggests ${
+        processedData[processedData.length - 1].cumulativeOutput > processedData[processedData.length - 1].cumulativeInput
+          ? "potential external sourcing or undeclared inputs."
+          : "aligned production-output behavior."
+      }`
+    : "Upload data to generate insight."}
+</p>
 </div>
         
 {/* INVENTORY DECAY */}
@@ -373,7 +372,7 @@ const benford = useMemo(() => {
     >
       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
 
-      <XAxis
+      <XAxis tickFormatter={formatNumber} 
         dataKey="xAxisLabel"
         angle={-30}
         textAnchor="end"
@@ -384,14 +383,25 @@ const benford = useMemo(() => {
 
       <YAxis
         stroke="#e2e8f0"
-        tick={{ fill: "#e2e8f0", fontSize: 11 }}
-      />
+  tickFormatter={formatNumber}
+  tick={{ fill: "#e2e8f0", fontSize: 11 }}
+/>
 
-      <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155" }} />
+      <Tooltip
+  formatter={(value) => formatNumber(value)}
+  contentStyle={{
+    backgroundColor: "#020617",
+    border: "1px solid #334155",
+    color: "#e2e8f0"
+  }}
+/>
 
       <Line dataKey="inventoryPool" stroke="#f59e0b" strokeWidth={3} dot={false} />
     </LineChart>
   </ResponsiveContainer>
+<p className="text-[10px] text-slate-500 mt-3 italic">
+  Inventory levels reflect decay-adjusted accumulation. Persistent buildup indicates stockpiling, while sharp drops suggest bulk export cycles.
+</p>
 </div>
         {/* BENFORD'S LAW DISTRIBUTION */}
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
@@ -399,13 +409,19 @@ const benford = useMemo(() => {
           <ResponsiveContainer width="100%" height="90%">
             <BarChart data={benford}>
   <XAxis dataKey="digit" stroke="#e2e8f0" fontSize={12} />
-  <YAxis stroke="#e2e8f0" fontSize={10} />
+  <YAxis
+  tickFormatter={formatNumber}
+  tick={{ fill: "#e2e8f0", fontSize: 11 }}
+/>
   <Tooltip cursor={{fill: 'transparent'}} />
   
   {/* Actual Counts from your CSV */}
   <Bar dataKey="actual" fill="#6366f1" radius={[4, 4, 0, 0]} name="Frequency" />
 </BarChart>
           </ResponsiveContainer>
+          <p className="text-[10px] text-slate-500 mt-3 italic">
+  Distribution deviation from Benford's Law may indicate artificial number manipulation or reporting bias in trade values.
+</p>
         </div>
 {/* SCATTER CHART: CORRELATION ANALYSIS */}
 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
@@ -417,7 +433,7 @@ const benford = useMemo(() => {
     <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
       <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
       
-      <XAxis
+      <XAxis tickFormatter={formatNumber} 
         type="number"
         dataKey="inventoryPool"
         name="Inventory"
@@ -429,8 +445,8 @@ const benford = useMemo(() => {
         type="number"
         dataKey="outflow" // Make sure this key matches your data
         name="Exports"
-        stroke="#e2e8f0"
-        fontSize={10}
+  tickFormatter={formatNumber}
+  tick={{ fill: "#e2e8f0", fontSize: 11 }}
       />
       
       <Tooltip cursor={{ strokeDasharray: '3 3' }} />
@@ -442,6 +458,30 @@ const benford = useMemo(() => {
       />
     </ScatterChart>
   </ResponsiveContainer>
+  <p className="text-[10px] text-slate-500 mt-3 italic">
+  Weak correlation between input materials and exports may indicate external sourcing, misreporting, or transit trade behavior.
+</p>
+</div>
+
+      {/* SANKEY FLOW */}
+<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[500px]">
+  <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">
+    Trade Flow Intelligence (Origin → Entity → Destination)
+  </h3>
+
+  <ResponsiveContainer width="100%" height="90%">
+    <Sankey
+      data={sankeyData}
+      nodePadding={20}
+      margin={{ left: 50, right: 50, top: 20, bottom: 20 }}
+    >
+      <SankeyTooltip />
+    </Sankey>
+  </ResponsiveContainer>
+
+  <p className="text-[10px] text-slate-500 mt-3 italic">
+    Highlights trade routing structure. Disconnected origin-destination flows may indicate transit trade or rerouting patterns.
+  </p>
 </div>
       {/* ✅ PASTE RISK TABLE HERE */}
 
@@ -469,6 +509,11 @@ const benford = useMemo(() => {
                   Risk Score: {Math.round(score)}
                 </span>
               </div>
+              <div className="border-t border-slate-800 mt-3 pt-3">
+<p className="text-[10px] text-slate-500 mt-3 italic">
+  Entities are ranked based on abnormal export behavior and inventory divergence signals.
+</p>
+</div>
             ))}
         </div>
       </div>
@@ -488,6 +533,9 @@ const benford = useMemo(() => {
         <span>{Math.round(v)}</span>
       </div>
     ))}
+  <p className="text-[10px] text-slate-500 mt-3 italic">
+  Geographic concentration highlights sourcing dependencies and potential high-risk trade corridors.
+</p>
   </div>
 
   {/* DESTINATION */}
@@ -524,6 +572,9 @@ const benford = useMemo(() => {
     <div key={i} className="flex justify-between text-xs mb-2">
       <span>{name}</span>
       <span className="text-red-400">{score}</span>
+      <p className="text-[10px] text-slate-500 mt-3 italic">
+  Geographic concentration highlights sourcing dependencies and potential high-risk trade corridors.
+</p>
     </div>
   ))}
 </div>
