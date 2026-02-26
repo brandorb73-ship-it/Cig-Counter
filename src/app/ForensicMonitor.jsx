@@ -510,9 +510,6 @@ const benford = useMemo(() => {
                 </span>
               </div>
               <div className="border-t border-slate-800 mt-3 pt-3">
-<p className="text-[10px] text-slate-500 mt-3 italic">
-  Entities are ranked based on abnormal export behavior and inventory divergence signals.
-</p>
 </div>
             ))}
         </div>
