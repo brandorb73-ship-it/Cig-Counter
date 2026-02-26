@@ -548,7 +548,7 @@ export default function ObsidianPrimeV12Final() {
                    <div className="space-y-4 mb-8 border-y py-6 border-slate-50"><div className="flex justify-between text-xs font-bold"><span>Gap Volume</span> <span className="text-red-600 font-mono">{Math.round(r.gap).toLocaleString()}</span></div><div className="flex justify-between text-xs font-bold"><span>Shadow Index</span> <span className="text-blue-700 font-mono">{Math.round(r.prob)}%</span></div></div>
                    <button onClick={() => setActiveTab('country')} className="w-full bg-slate-900 py-3 rounded-xl text-white font-black text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all">Reload Analysis</button>
                 </div>
-              ))}
+ ))}
             {reports.length === 0 && (
                 <div className="col-span-full py-20 text-center bg-slate-100 border-2 border-dashed rounded-[2.5rem] text-slate-400 uppercase font-black text-xs tracking-widest">
                   No Snapshots Found
@@ -558,7 +558,6 @@ export default function ObsidianPrimeV12Final() {
           )}
         </div>
       )}
-
       {/* TAB 5: FORENSIC MONITOR */}
 {/* Only show the standard loader if NOT on the Forensic tab */}
 {activeTab !== 'forensic' && (
