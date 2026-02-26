@@ -117,8 +117,6 @@ const inputCapacity = (d.inventoryPool * eff) / 0.0007;
 invPool = invPool + inputCapacity - (invPool * 0.02);
 cumOut += d.exports;
 
-const stampGap = Math.max(0, cumOut - invPool);
-
     // ✅ BENFORD (Fixed Digit Extraction)
     const firstDigit = d.exports > 0 ? parseInt(String(Math.floor(d.exports))[0]) : 0;
 
