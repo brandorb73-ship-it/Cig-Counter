@@ -28,15 +28,29 @@ const fetchCSV = async () => {
         return parseFloat(cleaned) || 0;
       };
 
-      return {
-        entity: c[0] || "Unknown",
-        month: c[1] || "",
-        year: c[2] || "",
-        tobacco: cleanNumeric(c[3]),  // Column D (index 3)
-        exports: cleanNumeric(c[15]), // Column P (index 15) - Cigarette Exports
-        origin: c[5] || "Unknown",
-        dest: c[14] || "Unknown"
-      };
+    return {
+  entity: c[0] || "Unknown",
+  month: c[1] || "",
+  year: c[2] || "",
+
+  tobacco: cleanNumeric(c[3]),
+  tow: cleanNumeric(c[6]),
+  paper: cleanNumeric(c[9]),
+  filter: cleanNumeric(c[12]),
+
+  // ✅ TOTAL INPUT POOL
+  inventoryPool:
+    cleanNumeric(c[3]) +
+    cleanNumeric(c[6]) +
+    cleanNumeric(c[9]) +
+    cleanNumeric(c[12]),
+
+  exports: cleanNumeric(c[15]),
+
+  // ✅ FIXED INDEXES
+  origin: c[5] || c[8] || c[11] || c[14] || "Unknown",
+  dest: c[16] || "Unknown"
+};
     });
     setData(parsed);
   } catch (err) {
@@ -58,18 +72,27 @@ const fetchCSV = async () => {
 const grouped = {};
 data.forEach(d => {
   // Use entity + month + year to ensure we don't accidentally merge everything into one month
-  const key = `${d.entity}-${d.month}-${d.year}`.toLowerCase();
+  const key = `${d.month}-${d.year}`.toLowerCase();
   
-  if (!grouped[key]) {
-    grouped[key] = { 
-      ...d, 
-      tobacco: 0, 
-      exports: 0 
-    };
-  }
-  // Ensure we are adding, not replacing
-  grouped[key].tobacco += n(d.tobacco);
-  grouped[key].exports += n(d.exports);
+if (!grouped[key]) {
+  grouped[key] = { 
+    month: d.month,
+    year: d.year,
+    tobacco: 0,
+    tow: 0,
+    paper: 0,
+    filter: 0,
+    inventoryPool: 0,
+    exports: 0
+  };
+}
+
+grouped[key].tobacco += n(d.tobacco);
+grouped[key].tow += n(d.tow);
+grouped[key].paper += n(d.paper);
+grouped[key].filter += n(d.filter);
+grouped[key].inventoryPool += n(d.inventoryPool);
+grouped[key].exports += n(d.exports);
 });
 
   const sorted = Object.values(grouped).sort((a,b) => {
@@ -86,7 +109,7 @@ data.forEach(d => {
     const eff = (100 - wastage) / 100;
     
     // ✅ CORE MATH (Using Aggregated Values)
-    const monthlyCapacity = (d.tobacco * eff) / 0.0007;
+   const monthlyCapacity = (d.inventoryPool * eff) / 0.0007;
     invPool = (invPool * 0.98) + monthlyCapacity; // Inventory Decay
     cumOut += d.exports;
 
@@ -118,53 +141,63 @@ data.forEach(d => {
 const sankeyData = useMemo(() => {
   if (!data || data.length === 0) return { nodes: [], links: [] };
 
-  const nodeMap = {};
-  const links = [];
-
-  const getNodeIndex = (name) => {
-    if (!nodeMap[name]) {
-      nodeMap[name] = { name };
-    }
-    return Object.keys(nodeMap).indexOf(name);
-  };
+  const nodeSet = new Set();
+  const linkMap = {};
 
   data.forEach(d => {
-    const origin = String(d.origin || "Unknown Origin");
     const entity = String(d.entity || "Unknown Entity");
     const dest = String(d.dest || "Unknown Destination");
 
-    const value = Math.max(1, parseFloat(d.exports) || 1);
+    const materials = [
+      { name: d.tobaccoOrigin, weight: d.tobacco },
+      { name: d.towOrigin, weight: d.tow },
+      { name: d.paperOrigin, weight: d.paper },
+      { name: d.filterOrigin, weight: d.filter }
+    ];
 
-    // Origin → Entity
-    links.push({
-      source: origin,
-      target: entity,
-      value
-    });
+    const exports = Math.max(1, Number(d.exports) || 1);
 
-    // Entity → Destination
-    links.push({
-      source: entity,
-      target: dest,
-      value
+    materials.forEach(m => {
+      if (!m.name) return;
+
+      const origin = String(m.name);
+
+      nodeSet.add(origin);
+      nodeSet.add(entity);
+      nodeSet.add(dest);
+
+      // 🔥 RISK LOGIC
+      const materialShare = m.weight || 1;
+      const riskBoost = exports > (materialShare * 1.2) ? 1.5 : 1;
+
+      const value = Math.max(1, materialShare * riskBoost);
+
+      const oeKey = `${origin}->${entity}`;
+      const edKey = `${entity}->${dest}`;
+
+      linkMap[oeKey] = (linkMap[oeKey] || 0) + value;
+      linkMap[edKey] = (linkMap[edKey] || 0) + exports;
     });
   });
 
-  // Convert names → indices
-  const nodes = Object.keys(nodeMap).map(name => ({ name }));
+  const nodes = Array.from(nodeSet).map(name => ({ name }));
 
   const nodeIndex = {};
   nodes.forEach((n, i) => {
     nodeIndex[n.name] = i;
   });
 
-  const formattedLinks = links.map(l => ({
-    source: nodeIndex[l.source],
-    target: nodeIndex[l.target],
-    value: l.value
-  }));
+  const links = Object.entries(linkMap).map(([key, value]) => {
+    const [source, target] = key.split("->");
 
-  return { nodes, links: formattedLinks };
+    return {
+      source: nodeIndex[source],
+      target: nodeIndex[target],
+      value: Math.round(value)
+    };
+  });
+
+  return { nodes, links };
 
 }, [data]);
   // ANOMALY TICKER LOGIC
@@ -280,24 +313,30 @@ const benford = useMemo(() => {
   data={processedData} 
   margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // ✅ Extra bottom margin for X-Axis labels
 >
-  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+<CartesianGrid stroke="#334155" strokeDasharray="3 3" />
   
-  <XAxis 
-    dataKey="xAxisLabel" 
-    stroke="#cbd5e1" // ✅ Brighter text (Slate 300)
-    fontSize={11} 
-    angle={-45}      // ✅ Tilt labels so they don't overlap/cut
-    textAnchor="end" 
-    interval={0} 
-  />
-  
-  <YAxis 
-    stroke="#cbd5e1" // ✅ Brighter text
-    fontSize={11} 
-    tickFormatter={v => v.toLocaleString()} 
-  />
+  <XAxis
+  dataKey="xAxisLabel"
+  stroke="#e2e8f0"
+  tick={{ fill: "#e2e8f0", fontSize: 11 }}
+  axisLine={{ stroke: "#94a3b8" }}
+  tickLine={{ stroke: "#94a3b8" }}
+/>
 
-  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', color: '#fff' }} />
+<YAxis
+  stroke="#e2e8f0"
+  tick={{ fill: "#e2e8f0", fontSize: 11 }}
+  axisLine={{ stroke: "#94a3b8" }}
+  tickLine={{ stroke: "#94a3b8" }}
+/>
+
+  <Tooltip
+  contentStyle={{
+    backgroundColor: "#020617",
+    border: "1px solid #334155",
+    color: "#e2e8f0"
+  }}
+/>
   <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
   
   <Area name="Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
