@@ -549,6 +549,11 @@ export default function ObsidianPrimeV12Final() {
                    <button onClick={() => setActiveTab('country')} className="w-full bg-slate-900 py-3 rounded-xl text-white font-black text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all">Reload Analysis</button>
                 </div>
               ))}
+            {reports.length === 0 && (
+                <div className="col-span-full py-20 text-center bg-slate-100 border-2 border-dashed rounded-[2.5rem] text-slate-400 uppercase font-black text-xs tracking-widest">
+                  No Snapshots Found
+                </div>
+              )}
             </div>
           )}
         </div>
