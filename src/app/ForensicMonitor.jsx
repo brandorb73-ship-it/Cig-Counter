@@ -6,6 +6,7 @@ import {
   CartesianGrid, BarChart, Bar, Legend, Cell, Sankey, Tooltip as SankeyTooltip, LineChart,
 } from "recharts";
 import { ScatterChart, Scatter } from "recharts";
+import Papa from "papaparse";
 
 export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
@@ -16,46 +17,50 @@ const fetchCSV = async () => {
   try {
     const res = await fetch(url);
     const text = await res.text();
-   const rows = text.split("\n").filter(r => r.trim() !== "");
 
-const headers = rows[0].split(",").map(h => h.trim());
-
-const parsed = rows.slice(1).map(r => {
-  const values = r.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-
-  const obj = {};
-  headers.forEach((h, i) => {
-    obj[h] = (values[i] || "").replace(/"/g, "").trim();
-  });
-
-  const cleanNumeric = (val) => {
-    if (!val) return 0;
-    return parseFloat(val.replace(/[^\d.-]/g, "")) || 0;
-  };
-
-  return {
-    entity: obj["Entity"] || "Unknown",
-    month: obj["Month"] || "",
-    year: obj["Year"] || "",
-
-    tobacco: cleanNumeric(obj["Tobacco"]),
-    tobaccoOrigin: obj["Tobacco Origin"] || "Unknown",
-
-    tow: cleanNumeric(obj["Tow"]),
-    towOrigin: obj["Tow Origin"] || "Unknown",
-
-    paper: cleanNumeric(obj["Paper"]),
-    paperOrigin: obj["Paper Origin"] || "Unknown",
-
-    filter: cleanNumeric(obj["Filter"]),
-    filterOrigin: obj["Filter Origin"] || "Unknown",
-
-    exports: cleanNumeric(obj["Cigarette Exports"]),
-
-    dest: obj["Destination"] || "Unknown"
-  };
+    const { data: rows } = Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true
     });
+
+    const cleanNumeric = (val) => {
+      if (!val) return 0;
+      return parseFloat(String(val).replace(/[^\d.-]/g, "")) || 0;
+    };
+
+    const parsed = rows.map(r => ({
+      entity: r["Entity"] || "Unknown",
+      month: r["Month"] || "",
+      year: r["Year"] || "",
+
+      tobacco: cleanNumeric(r["Tobacco"]),
+      tow: cleanNumeric(r["Tow"]),
+      paper: cleanNumeric(r["Paper"]),
+      filter: cleanNumeric(r["Filter"]),
+
+      inventoryPool:
+        cleanNumeric(r["Tobacco"]) +
+        cleanNumeric(r["Tow"]) +
+        cleanNumeric(r["Paper"]) +
+        cleanNumeric(r["Filter"]),
+
+      exports: cleanNumeric(r["Cigarette Exports"]),
+
+      // ✅ FIXED — use actual column names
+      origin:
+        r["Tobacco Origin"] ||
+        r["Tow Origin"] ||
+        r["Paper Origin"] ||
+        r["Filter Origin"] ||
+        "Unknown",
+
+      dest: r["Destination"] || "Unknown"
+    }));
+
+    console.log("✅ Parsed CSV:", parsed);
+
     setData(parsed);
+
   } catch (err) {
     console.error("Fetch error:", err);
   }
