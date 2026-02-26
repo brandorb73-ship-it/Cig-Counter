@@ -16,41 +16,44 @@ const fetchCSV = async () => {
   try {
     const res = await fetch(url);
     const text = await res.text();
-    const rows = text.split("\n").filter(row => row.trim() !== "").slice(1);
+   const rows = text.split("\n").filter(r => r.trim() !== "");
 
-    const parsed = rows.map(r => {
-      const c = r.split(",").map(field => field.trim());
-      
-      // Cleans "1,000,000" into 1000000
-      const cleanNumeric = (val) => {
-        if (!val) return 0;
-        const cleaned = val.replace(/[^\d.-]/g, "");
-        return parseFloat(cleaned) || 0;
-      };
+const headers = rows[0].split(",").map(h => h.trim());
 
-    return {
-  entity: c[0] || "Unknown",
-  month: c[1] || "",
-  year: c[2] || "",
+const parsed = rows.slice(1).map(r => {
+  const values = r.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
 
-  tobacco: cleanNumeric(c[3]),
-  tow: cleanNumeric(c[6]),
-  paper: cleanNumeric(c[9]),
-  filter: cleanNumeric(c[12]),
+  const obj = {};
+  headers.forEach((h, i) => {
+    obj[h] = (values[i] || "").replace(/"/g, "").trim();
+  });
 
-  // ✅ TOTAL INPUT POOL
-  inventoryPool:
-    cleanNumeric(c[3]) +
-    cleanNumeric(c[6]) +
-    cleanNumeric(c[9]) +
-    cleanNumeric(c[12]),
+  const cleanNumeric = (val) => {
+    if (!val) return 0;
+    return parseFloat(val.replace(/[^\d.-]/g, "")) || 0;
+  };
 
-  exports: cleanNumeric(c[15]),
+  return {
+    entity: obj["Entity"] || "Unknown",
+    month: obj["Month"] || "",
+    year: obj["Year"] || "",
 
-  // ✅ FIXED INDEXES
-  origin: c[5] || c[8] || c[11] || c[14] || "Unknown",
-  dest: c[16] || "Unknown"
-};
+    tobacco: cleanNumeric(obj["Tobacco"]),
+    tobaccoOrigin: obj["Tobacco Origin"] || "Unknown",
+
+    tow: cleanNumeric(obj["Tow"]),
+    towOrigin: obj["Tow Origin"] || "Unknown",
+
+    paper: cleanNumeric(obj["Paper"]),
+    paperOrigin: obj["Paper Origin"] || "Unknown",
+
+    filter: cleanNumeric(obj["Filter"]),
+    filterOrigin: obj["Filter Origin"] || "Unknown",
+
+    exports: cleanNumeric(obj["Cigarette Exports"]),
+
+    dest: obj["Destination"] || "Unknown"
+  };
     });
     setData(parsed);
   } catch (err) {
@@ -72,7 +75,7 @@ const fetchCSV = async () => {
 const grouped = {};
 data.forEach(d => {
   // Use entity + month + year to ensure we don't accidentally merge everything into one month
-  const key = `${d.month}-${d.year}`.toLowerCase();
+ const key = `${d.entity}-${d.month}-${d.year}`;
   
 if (!grouped[key]) {
   grouped[key] = { 
@@ -109,9 +112,12 @@ grouped[key].exports += n(d.exports);
     const eff = (100 - wastage) / 100;
     
     // ✅ CORE MATH (Using Aggregated Values)
-   const monthlyCapacity = (d.inventoryPool * eff) / 0.0007;
-    invPool = (invPool * 0.98) + monthlyCapacity; // Inventory Decay
-    cumOut += d.exports;
+const inputCapacity = (d.inventoryPool * eff) / 0.0007;
+
+invPool = invPool + inputCapacity - (invPool * 0.02);
+cumOut += d.exports;
+
+const stampGap = Math.max(0, cumOut - invPool);
 
     // ✅ BENFORD (Fixed Digit Extraction)
     const firstDigit = d.exports > 0 ? parseInt(String(Math.floor(d.exports))[0]) : 0;
@@ -126,8 +132,8 @@ grouped[key].exports += n(d.exports);
       xAxisLabel: `${(d.month || "").substring(0,3)} ${d.year}`,
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOut),
-      inventoryPool: Math.round(invPool),
-      monthlyCapacity: Math.round(monthlyCapacity),
+inventoryPool: Math.round(invPool),
+monthlyCapacity: Math.round(inputCapacity),
       outflow: Math.round(d.exports),
       stampGap: Math.round(stampGap),
       pdi: Math.round(pdi),
@@ -141,8 +147,14 @@ grouped[key].exports += n(d.exports);
 const sankeyData = useMemo(() => {
   if (!data || data.length === 0) return { nodes: [], links: [] };
 
-  const nodeSet = new Set();
+  const nodeMap = {};
   const linkMap = {};
+
+  const addNode = (name, type) => {
+    if (!nodeMap[name]) {
+      nodeMap[name] = { name, type };
+    }
+  };
 
   data.forEach(d => {
     const entity = String(d.entity || "Unknown Entity");
@@ -162,38 +174,38 @@ const sankeyData = useMemo(() => {
 
       const origin = String(m.name);
 
-      nodeSet.add(origin);
-      nodeSet.add(entity);
-      nodeSet.add(dest);
+      addNode(origin, "origin");
+      addNode(entity, "entity");
+      addNode(dest, "destination");
 
-      // 🔥 RISK LOGIC
-      const materialShare = m.weight || 1;
-      const riskBoost = exports > (materialShare * 1.2) ? 1.5 : 1;
+      // 🔥 risk logic
+      let risk = 1;
+      if (origin !== dest) risk += 0.5;
+      if (exports > (m.weight * 1.2)) risk += 0.5;
 
-      const value = Math.max(1, materialShare * riskBoost);
+      const value = Math.max(1, (m.weight || 1) * risk);
 
-      const oeKey = `${origin}->${entity}`;
-      const edKey = `${entity}->${dest}`;
+      const oe = `${origin}->${entity}`;
+      const ed = `${entity}->${dest}`;
 
-      linkMap[oeKey] = (linkMap[oeKey] || 0) + value;
-      linkMap[edKey] = (linkMap[edKey] || 0) + exports;
+      linkMap[oe] = (linkMap[oe] || 0) + value;
+      linkMap[ed] = (linkMap[ed] || 0) + exports;
     });
   });
 
-  const nodes = Array.from(nodeSet).map(name => ({ name }));
+  const nodes = Object.values(nodeMap);
 
   const nodeIndex = {};
   nodes.forEach((n, i) => {
     nodeIndex[n.name] = i;
   });
 
-  const links = Object.entries(linkMap).map(([key, value]) => {
-    const [source, target] = key.split("->");
-
+  const links = Object.entries(linkMap).map(([k, v]) => {
+    const [s, t] = k.split("->");
     return {
-      source: nodeIndex[source],
-      target: nodeIndex[target],
-      value: Math.round(value)
+      source: nodeIndex[s],
+      target: nodeIndex[t],
+      value: Math.round(v)
     };
   });
 
@@ -346,16 +358,34 @@ const benford = useMemo(() => {
 </div>
         
 {/* INVENTORY DECAY */}
-<div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem] shadow-sm">
-  <h3 className="text-slate-800 font-black text-[11px] uppercase tracking-[0.3em] mb-6">
-    Inventory Decay (Drying Effect)
 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
-  <h3 className="text-xs font-bold uppercase text-slate-400 mb-6">Inventory Aging (Drying Effect)</h3>
+  <h3 className="text-xs font-bold uppercase text-slate-400 mb-6">
+    Inventory Aging (Drying Effect)
+  </h3>
+
   <ResponsiveContainer width="100%" height="80%">
-    <LineChart data={processedData} margin={{ bottom: 50 }}>
-      <XAxis dataKey="xAxisLabel" stroke="#cbd5e1" fontSize={10} angle={-45} textAnchor="end" />
-      <YAxis stroke="#cbd5e1" fontSize={10} />
-      <Tooltip />
+    <LineChart
+      data={processedData}
+      margin={{ top: 20, right: 20, left: 20, bottom: 50 }}
+    >
+      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
+
+      <XAxis
+        dataKey="xAxisLabel"
+        angle={-30}
+        textAnchor="end"
+        height={60}
+        stroke="#e2e8f0"
+        tick={{ fill: "#e2e8f0", fontSize: 11 }}
+      />
+
+      <YAxis
+        stroke="#e2e8f0"
+        tick={{ fill: "#e2e8f0", fontSize: 11 }}
+      />
+
+      <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid #334155" }} />
+
       <Line dataKey="inventoryPool" stroke="#f59e0b" strokeWidth={3} dot={false} />
     </LineChart>
   </ResponsiveContainer>
@@ -365,8 +395,8 @@ const benford = useMemo(() => {
           <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">Data Integrity (Benford Analysis)</h3>
           <ResponsiveContainer width="100%" height="90%">
             <BarChart data={benford}>
-  <XAxis dataKey="digit" stroke="#475569" fontSize={12} />
-  <YAxis stroke="#475569" fontSize={10} />
+  <XAxis dataKey="digit" stroke="#e2e8f0" fontSize={12} />
+  <YAxis stroke="#e2e8f0" fontSize={10} />
   <Tooltip cursor={{fill: 'transparent'}} />
   
   {/* Actual Counts from your CSV */}
@@ -388,7 +418,7 @@ const benford = useMemo(() => {
         type="number"
         dataKey="inventoryPool"
         name="Inventory"
-        stroke="#475569"
+        stroke="#e2e8f0"
         fontSize={10}
       />
       
@@ -396,7 +426,7 @@ const benford = useMemo(() => {
         type="number"
         dataKey="outflow" // Make sure this key matches your data
         name="Exports"
-        stroke="#475569"
+        stroke="#e2e8f0"
         fontSize={10}
       />
       
