@@ -1,279 +1,283 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
+import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
 
-/* =========================
-   NODE RENDERER
-========================= */
-const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
-  if (x === undefined || isNaN(x)) return null;
+/* ================================
+   CONSTANTS
+================================ */
 
-  const isOut = x > containerWidth / 2;
+const KG_TO_STICKS = 1000; // 1kg = 1000 cigarettes
+const MIN_FLOW_SHARE = 0.015;
 
-  return (
-    <Layer key={`node-${index}`}>
-      <Rectangle
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill="#38bdf8"
-        fillOpacity={0.9}
-        rx={2}
-      />
-      <text
-        x={isOut ? x - 10 : x + width + 10}
-        y={y + height / 2}
-        textAnchor={isOut ? "end" : "start"}
-        fontSize={11}
-        fontWeight={800}
-        fill="#fff"
-        dominantBaseline="middle"
-      >
-        {payload.name}
-      </text>
-    </Layer>
-  );
+/* ================================
+   HELPERS
+================================ */
+
+const kgToSticks = (kg) => Math.round((kg || 0) * KG_TO_STICKS);
+
+const scale = (v) => Math.log10(v + 1) * 120;
+
+/* ================================
+   RISK ENGINE (ENHANCED)
+================================ */
+
+const computeRisk = (row) => {
+  let score = 0;
+
+  if (row.stockpiling) score += 25;
+  if (row.stamp_gap) score += 20;
+  if (row.tax_loss) score += 30;
+
+  if (row.entity_risk === "High") score += 25;
+  if (row.entity_risk === "Medium") score += 10;
+
+  return score;
 };
 
-/* =========================
-   TOOLTIP
-========================= */
-const AuditTooltip = ({ active, payload }) => {
-  if (!active || !payload || !payload.length) return null;
+/* ================================
+   SUPPLY CHAIN CONSISTENCY CHECK
+================================ */
 
-  const d = payload[0].payload;
-  if (!d || !d.sourceName) return null;
+const detectMismatch = (row) => {
+  let flags = [];
 
-  const efficiency = 0.95;
-  const capacity = (d.tobacco * efficiency) / 0.0007;
-  const exports = d.value;
-  const gap = Math.round(exports - capacity);
-
-  return (
-    <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl text-xs">
-      <div className="text-emerald-400 font-black mb-2 uppercase">
-        Mass Balance Audit
-      </div>
-
-      <div className="font-bold text-white mb-2">
-        {d.sourceName} → {d.targetName}
-      </div>
-
-      <div className="space-y-1">
-        <div className="flex justify-between">
-          <span>Tobacco:</span>
-          <span>{Math.round(d.tobacco).toLocaleString()} kg</span>
-        </div>
-
-        <div className="flex justify-between">
-          <span>Capacity:</span>
-          <span className="text-emerald-400">
-            {Math.round(capacity).toLocaleString()}
-          </span>
-        </div>
-
-        <div className="flex justify-between">
-          <span>Exports:</span>
-          <span className="text-blue-400">
-            {Math.round(exports).toLocaleString()}
-          </span>
-        </div>
-
-        <div
-          className={`mt-2 text-center font-bold ${
-            gap > 0 ? "text-red-500" : "text-emerald-400"
-          }`}
-        >
-          GAP: {gap.toLocaleString()}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* =========================
-   MAIN COMPONENT
-========================= */
-export default function SankeyFlow({ processedData }) {
-  const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
-    if (!processedData || processedData.length === 0) {
-      return {
-        sankeyData: { nodes: [], links: [] },
-        riskLevel: "LOW",
-        riskFlags: [],
-        summary: null,
-      };
-    }
-
-    const nodes = [];
-    const nodeMap = new Map();
-    const linkMap = new Map();
-
-    const CLUSTER_THRESHOLD = 0.03; // 3%
-
-    /* ========= NODE CREATION ========= */
-    const addNode = (name, layer) => {
-      const safe = name || "Unknown";
-      const key = `${safe}-L${layer}`;
-
-      if (!nodeMap.has(key)) {
-        const id = nodes.length;
-        nodes.push({ name: safe, layer });
-        nodeMap.set(key, id);
-        return id;
-      }
-      return nodeMap.get(key);
-    };
-
-    /* ========= BUILD LINKS ========= */
-    processedData.forEach((d) => {
-      const valueRaw = Math.max(1, Number(d.outflow) || 0);
-
-      // 🔥 FLOW SCALING (log compression)
-      const scaled = Math.log10(valueRaw + 1) * 1000;
-
-      const s = addNode(d.origin, 0);
-      const e = addNode(d.entity, 1);
-      const t = addNode(d.dest, 2);
-
-      const update = (src, tgt, sName, tName) => {
-        const key = `${src}-${tgt}`;
-
-        if (!linkMap.has(key)) {
-          linkMap.set(key, {
-            source: src,
-            target: tgt,
-            sourceName: sName,
-            targetName: tName,
-            value: 0,
-            tobacco: 0,
-          });
-        }
-
-        const l = linkMap.get(key);
-        l.value += scaled;
-        l.tobacco += Number(d.tobacco) || 0;
-      };
-
-      update(s, e, d.origin, d.entity);
-      update(e, t, d.entity, d.dest);
-    });
-
-    let links = Array.from(linkMap.values());
-
-    /* ========= REMOVE INVALID ========= */
-    links = links.filter(
-      (l) =>
-        l.value > 0 &&
-        nodes[l.source] !== undefined &&
-        nodes[l.target] !== undefined
-    );
-
-    if (links.length === 0) {
-      return {
-        sankeyData: { nodes: [], links: [] },
-        riskLevel: "LOW",
-        riskFlags: [],
-        summary: null,
-      };
-    }
-
-    /* ========= CLUSTERING ========= */
-    const total = links.reduce((a, b) => a + b.value, 0);
-
-    links = links.map((l) => {
-      if (l.value / total < CLUSTER_THRESHOLD) {
-        return { ...l, targetName: "OTHER" };
-      }
-      return l;
-    });
-
-    /* ========= RISK ========= */
-    let score = 0;
-    const flags = [];
-
-    const totalTobacco =
-      links.reduce((a, b) => a + b.tobacco, 0) / 2;
-
-    const capacity = (totalTobacco * 0.95) / 0.0007;
-    const volume = total;
-
-    if (volume > capacity * 1.1) {
-      flags.push({ msg: "Exports exceed capacity", type: "CRITICAL" });
-      score += 4;
-    }
-
-    if (capacity > volume * 1.3) {
-      flags.push({ msg: "Stockpiling detected", type: "HIGH" });
-      score += 2;
-    }
-
-    const level = score >= 4 ? "CRITICAL" : score >= 2 ? "HIGH" : "LOW";
-
-    const topRoute =
-      links.length > 0
-        ? links.reduce((p, c) => (p.value > c.value ? p : c))
-        : null;
-
-    return {
-      sankeyData: { nodes, links },
-      riskLevel: level,
-      riskFlags: flags,
-      summary: {
-        topRoute: topRoute
-          ? `${topRoute.sourceName} → ${topRoute.targetName}`
-          : "N/A",
-        totalVolume: Math.round(total),
-        hub: processedData[0]?.entity || "Unknown",
-      },
-    };
-  }, [processedData]);
-
-  /* ========= EMPTY STATE ========= */
-  if (!sankeyData.nodes.length || !sankeyData.links.length) {
-    return (
-      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-        <p className="text-slate-400">No flow data available</p>
-      </div>
-    );
+  if (row["Tobacco Origin"] && row["Filter Origin"] &&
+      row["Tobacco Origin"] !== row["Filter Origin"]) {
+    flags.push("Multi-country component sourcing");
   }
 
-  const styles = {
-    CRITICAL: "text-red-500 border-red-500",
-    HIGH: "text-orange-500 border-orange-500",
-    LOW: "text-emerald-500 border-emerald-500",
+  if (row["Tow Origin"] && row["Paper Origin"] &&
+      row["Tow Origin"] !== row["Paper Origin"]) {
+    flags.push("Tow/Paper mismatch");
+  }
+
+  return flags;
+};
+
+/* ================================
+   AI SUMMARY ENGINE (REAL)
+================================ */
+
+const generateSummary = (flows) => {
+  if (!flows.length) return "No flows detected.";
+
+  const totalKg = flows.reduce((s, f) => s + f.kg, 0);
+  const totalSticks = kgToSticks(totalKg);
+
+  const top = [...flows].sort((a, b) => b.kg - a.kg)[0];
+
+  const multiOrigin = flows.filter(f => f.flags.length > 0).length;
+  const highRisk = flows.filter(f => f.risk > 60).length;
+
+  return `
+Total volume: ${totalKg.toLocaleString()} kg (~${totalSticks.toLocaleString()} sticks)
+
+Primary destination: ${top.destination} (${Math.round((top.kg / totalKg) * 100)}%)
+
+${multiOrigin} flows show multi-origin component structuring
+${highRisk} high-risk flows (tax loss / stamp gap / stockpiling)
+
+Pattern indicates ${multiOrigin > 2 ? "structured supply chain fragmentation" : "relatively linear trade flows"}.
+  `;
+};
+
+/* ================================
+   MAIN COMPONENT
+================================ */
+
+export default function SankeyFlow({ data }) {
+
+  const sankeyData = useMemo(() => {
+
+    if (!data || !data.length) {
+      return { nodes: [], links: [], summary: "" };
+    }
+
+    /* --------------------------
+       STEP 1: Build flows
+    -------------------------- */
+
+    let flows = data.map(row => {
+
+      const kg = Number(row.Kg || 0);
+
+      return {
+        kg,
+        sticks: kgToSticks(kg),
+
+        tobacco: row["Tobacco Origin"],
+        tow: row["Tow Origin"],
+        paper: row["Paper Origin"],
+        filter: row["Filter Origin"],
+
+        destination: row.Destination,
+
+        risk: computeRisk(row),
+        flags: detectMismatch(row),
+
+        stockpiling: row.stockpiling,
+        stamp_gap: row.stamp_gap,
+        tax_loss: row.tax_loss
+      };
+    });
+
+    /* --------------------------
+       STEP 2: Aggregate flows
+    -------------------------- */
+
+    let linksRaw = [];
+
+    flows.forEach(f => {
+      if (f.tobacco && f.destination) {
+        linksRaw.push({
+          source: f.tobacco,
+          target: f.destination,
+          kg: f.kg,
+          sticks: f.sticks,
+          risk: f.risk,
+          flags: f.flags,
+          ...f
+        });
+      }
+    });
+
+    /* --------------------------
+       STEP 3: Normalize / cluster
+    -------------------------- */
+
+    const total = linksRaw.reduce((s, l) => s + l.kg, 0);
+
+    let major = [];
+    let minorKg = 0;
+
+    linksRaw.forEach(l => {
+      if (l.kg / total < MIN_FLOW_SHARE) {
+        minorKg += l.kg;
+      } else {
+        major.push(l);
+      }
+    });
+
+    if (minorKg > 0) {
+      major.push({
+        source: "Other Origins",
+        target: "Other Destinations",
+        kg: minorKg,
+        sticks: kgToSticks(minorKg),
+        risk: 0,
+        flags: []
+      });
+    }
+
+    /* --------------------------
+       STEP 4: Nodes
+    -------------------------- */
+
+    const nodeMap = {};
+    let index = 0;
+
+    const getNode = (name) => {
+      if (!(name in nodeMap)) {
+        nodeMap[name] = index++;
+      }
+      return nodeMap[name];
+    };
+
+    const links = major.map(l => ({
+      source: getNode(l.source),
+      target: getNode(l.target),
+      value: scale(l.kg),
+
+      rawKg: l.kg,
+      sticks: l.sticks,
+      risk: l.risk,
+      flags: l.flags,
+
+      stockpiling: l.stockpiling,
+      stamp_gap: l.stamp_gap,
+      tax_loss: l.tax_loss
+    }));
+
+    const nodes = Object.keys(nodeMap).map(n => ({ name: n }));
+
+    const summary = generateSummary(flows);
+
+    return { nodes, links, summary };
+
+  }, [data]);
+
+  /* ================================
+     TOOLTIP (INVESTIGATIVE)
+  ================================= */
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (!active || !payload?.length) return null;
+
+    const d = payload[0].payload;
+
+    return (
+      <div style={{
+        background: "#0f172a",
+        color: "#e2e8f0",
+        padding: "12px",
+        borderRadius: "10px",
+        fontSize: "12px"
+      }}>
+        <b>Flow Intelligence</b>
+
+        <div>Export: {d.rawKg?.toLocaleString()} kg</div>
+        <div>≈ {d.sticks?.toLocaleString()} sticks</div>
+
+        <hr />
+
+        <div><b>Risk Score:</b> {d.risk}</div>
+
+        {d.stockpiling && <div>⚠ Stockpiling</div>}
+        {d.stamp_gap && <div>⚠ Stamp Gap</div>}
+        {d.tax_loss && <div>⚠ Tax Loss</div>}
+
+        {d.flags?.length > 0 && (
+          <>
+            <hr />
+            <div><b>Supply Chain Flags</b></div>
+            {d.flags.map((f, i) => <div key={i}>⚠ {f}</div>)}
+          </>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[650px] flex flex-col">
-      <div className="flex justify-between mb-6">
-        <h3 className="text-xs text-slate-400 uppercase font-bold">
-          Trade Flow Intelligence
-        </h3>
+    <div style={{ width: "100%", height: 520 }}>
 
-        <div className={`px-3 py-1 border text-xs ${styles[riskLevel]}`}>
-          {riskLevel}
+      {/* AI SUMMARY */}
+      <div style={{
+        background: "#020617",
+        color: "#cbd5f5",
+        padding: "12px",
+        borderRadius: "10px",
+        marginBottom: "10px",
+        fontSize: "13px",
+        lineHeight: "1.5"
+      }}>
+        <b>AI Intelligence Summary</b>
+        <div style={{ marginTop: "6px", whiteSpace: "pre-line" }}>
+          {sankeyData.summary}
         </div>
       </div>
 
+      {/* SANKEY */}
       <ResponsiveContainer width="100%" height="100%">
         <Sankey
           data={sankeyData}
-          nodePadding={40}
-          linkCurvature={0.5}
-          node={<SankeyNode />}
-          link={{ stroke: "#38bdf8", strokeOpacity: 0.3 }}
+          nodePadding={28}
+          linkCurvature={0.45}
+          margin={{ top: 20, bottom: 20, left: 40, right: 40 }}
         >
-          <Tooltip content={<AuditTooltip />} />
+          <Tooltip content={<CustomTooltip />} />
         </Sankey>
       </ResponsiveContainer>
-
-      <div className="mt-4 text-xs text-slate-400">
-        Hub: <span className="text-white">{summary?.hub}</span> | Route:{" "}
-        <span className="text-white">{summary?.topRoute}</span>
-      </div>
     </div>
   );
 }
