@@ -13,6 +13,10 @@ import {
   ChevronRight, HelpCircle, Landmark, TrendingUp, Fingerprint, EyeOff 
 } from 'lucide-react';
 
+import RiskRanking from "./RiskRanking";
+import OriginDestinationPanel from "./OriginDestinationPanel";
+import TopRiskEntities from "./TopRiskEntities";
+
 const CONVERSIONS = {
   'TOBACCO': 1333.33, 
   'TOW': 8333.33, 
