@@ -1,9 +1,9 @@
 import React, { useMemo } from "react";
 import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-// 1. High-Contrast Node Renderer (Restored Visibility)
+// 1. HIGH-VISIBILITY NODE RENDERER
 const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
-  if (x === undefined || y === undefined || isNaN(x)) return null;
+  if (x === undefined || isNaN(x)) return null;
   const isOut = x > containerWidth / 2;
   return (
     <Layer key={`node-${index}`}>
@@ -23,14 +23,14 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
   );
 };
 
-// 2. Audit Tooltip with Mass Balance Logic (Hover Restored)
+// 2. AUDIT TOOLTIP (Calculations in Sticks)
 const AuditTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     if (!data.sourceName) return null;
 
-    const efficiency = 0.95; 
-    const capacitySticks = (data.tobacco * efficiency) / 0.0007;
+    const efficiency = 0.95; // 5% wastage
+    const capacitySticks = (data.tobacco * efficiency) / 0.0007; // 0.7g per stick
     const exportSticks = data.value; 
     const stampGap = Math.round(exportSticks - capacitySticks);
     
@@ -70,13 +70,13 @@ export default function SankeyFlow({ processedData }) {
     if (!processedData || processedData.length === 0) 
       return { sankeyData: { nodes: [], links: [] }, summary: null, riskFlags: [], riskLevel: 'LOW' };
 
-    // STRICT LAYERED NODE MAP to prevent 'depth' errors
     const nodes = [];
     const nodeIds = new Map();
     const linkMap = new Map();
 
+    // Map logic: unique identity based on layer (0=Origin, 1=Entity, 2=Dest)
     const addNode = (name, layer) => {
-      const key = `${name}-${layer}`; // Layer-specific key prevents circular loops
+      const key = `${name}-L${layer}`;
       if (!nodeIds.has(key)) {
         const id = nodes.length;
         nodes.push({ name, layer });
@@ -87,60 +87,49 @@ export default function SankeyFlow({ processedData }) {
     };
 
     processedData.forEach((d) => {
-      const origin = d.origin || "Unknown Origin";
-      const entity = d.entity || "Unknown Entity";
-      const dest = d.dest || "Unknown Destination";
       const sticks = (Number(d.outflow) || 0) * 1000;
-
-      // Layer 0: Origins | Layer 1: Entities | Layer 2: Destinations
-      const sId = addNode(origin, 0);
-      const eId = addNode(entity, 1);
-      const dId = addNode(dest, 2);
+      const sId = addNode(d.origin || "Unknown", 0);
+      const eId = addNode(d.entity || "Unknown", 1);
+      const dId = addNode(d.dest || "Unknown", 2);
 
       const buildLink = (src, tgt, sName, tName) => {
         const key = `${src}->${tgt}`;
         if (!linkMap.has(key)) {
-          linkMap.set(key, { source: src, target: tgt, sourceName: sName, targetName: tName, value: 0, tobacco: 0, tow: 0 });
+          linkMap.set(key, { source: src, target: tgt, sourceName: sName, targetName: tName, value: 0, tobacco: 0 });
         }
         const l = linkMap.get(key);
         l.value += sticks;
         l.tobacco += Number(d.tobacco) || 0;
-        l.tow += Number(d.tow) || 0;
       };
 
-      buildLink(sId, eId, origin, entity);
-      buildLink(eId, dId, entity, dest);
+      buildLink(sId, eId, d.origin, d.entity);
+      buildLink(eId, dId, d.entity, d.dest);
     });
 
     const links = Array.from(linkMap.values()).filter(l => l.value > 0);
     const totalVolume = links.reduce((acc, curr) => acc + curr.value, 0) / 2;
     const topRoute = links.reduce((p, c) => (p.value > c.value ? p : c), links[0]);
 
-    // Risk & Stockpiling Engine
+    // RISK & STOCKPILE ENGINE
     const flags = [];
     let score = 0;
-
     const totalTobacco = links.reduce((acc, curr) => acc + curr.tobacco, 0) / 2;
     const totalCapacity = (totalTobacco * 0.95) / 0.0007;
 
     if (totalCapacity > totalVolume * 1.25) {
-      flags.push({ type: 'STOCKPILE', msg: `Stockpiling Alert: Material capacity is 25%+ higher than output.` });
+      flags.push({ type: 'STOCKPILE', msg: `Inventory Alert: Inputs suggest capacity is 25%+ higher than output.` });
       score += 2;
     }
     if (totalVolume > totalCapacity * 1.05) {
-      flags.push({ type: 'CRITICAL', msg: `Stamp Gap: Declared exports exceed physical material capacity.` });
+      flags.push({ type: 'CRITICAL', msg: `Stamp Gap Detected: Declared output exceeds material capacity.` });
       score += 4;
-    }
-    if (topRoute && (topRoute.value / totalVolume > 0.6)) {
-      flags.push({ type: 'RISK', msg: `Concentration: ${Math.round((topRoute.value / totalVolume) * 100)}% of volume on one route.` });
-      score += 1;
     }
 
     const level = score >= 5 ? 'CRITICAL' : score >= 3 ? 'HIGH' : score >= 1 ? 'MEDIUM' : 'LOW';
 
     return { 
       sankeyData: { nodes, links }, 
-      summary: { totalVolume, topRoute: `${topRoute?.sourceName} → ${topRoute?.targetName}`, hub: processedData[0]?.entity },
+      summary: { totalVolume, topRouteName: `${topRoute?.sourceName} → ${topRoute?.targetName}`, hub: processedData[0]?.entity },
       riskFlags: flags,
       riskLevel: level
     };
@@ -154,11 +143,11 @@ export default function SankeyFlow({ processedData }) {
   };
 
   return (
-    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[750px] flex flex-col">
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[700px] flex flex-col">
       <div className="flex justify-between items-center mb-10">
-        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Trade Flow Intelligence</h3>
+        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest italic">Trade Flow Forensic Audit</h3>
         <div className={`px-4 py-1.5 rounded-full border font-black text-[10px] tracking-tighter ${riskStyles[riskLevel]}`}>
-          ENTITY RISK: {riskLevel}
+          RISK LEVEL: {riskLevel}
         </div>
       </div>
 
@@ -169,7 +158,7 @@ export default function SankeyFlow({ processedData }) {
             nodePadding={50}
             linkCurvature={0.5}
             node={<SankeyNode />}
-            link={{ stroke: "#38bdf8", strokeOpacity: 0.4, fill: "#38bdf8", fillOpacity: 0.15 }}
+            link={{ stroke: "#38bdf8", strokeOpacity: 0.4, fill: "#38bdf8", fillOpacity: 0.2 }}
           >
             <Tooltip content={<AuditTooltip />} />
           </Sankey>
@@ -177,18 +166,17 @@ export default function SankeyFlow({ processedData }) {
       </div>
 
       <div className="mt-8 space-y-3">
-        {riskFlags.map((flag, i) => (
-          <div key={i} className={`flex items-center gap-3 p-3 border rounded-xl ${flag.type === 'CRITICAL' ? 'bg-red-500/10 border-red-500/20 text-red-200' : 'bg-orange-500/10 border-orange-500/20 text-orange-200'}`}>
-            <span className="text-[9px] font-black px-2 py-0.5 rounded bg-current/20 uppercase">{flag.type}</span>
-            <p className="text-[11px] font-medium">{flag.msg}</p>
+        {riskFlags.map((f, i) => (
+          <div key={i} className="flex items-center gap-3 p-3 bg-black/40 border border-slate-800 rounded-xl">
+            <span className="text-[9px] font-black px-2 py-1 rounded bg-slate-800 text-white uppercase">{f.type}</span>
+            <p className="text-[11px] text-slate-300">{f.msg}</p>
           </div>
         ))}
-        
-        <div className="p-4 bg-black/40 rounded-xl border border-slate-800/50">
-          <p className="text-xs text-slate-300 leading-relaxed italic">
-            Intelligence confirms <strong className="text-white">{summary?.topRoute}</strong> is the primary corridor. 
-            A total of <strong className="text-white">{summary?.totalVolume.toLocaleString()} sticks</strong> are transiting through <strong className="text-white">{summary?.hub}</strong>. 
-            
+        <div className="p-4 bg-black/60 rounded-xl border border-slate-800/50">
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Audit confirms <strong className="text-white">{summary?.hub}</strong> processed <strong className="text-white">{summary?.totalVolume.toLocaleString()} sticks</strong>. 
+            Primary flow vector is <strong className="text-white">{summary?.topRouteName}</strong>. 
+            Hover over flow lines to inspect the <strong className="text-emerald-400">Mass Balance</strong> calculations.
           </p>
         </div>
       </div>
