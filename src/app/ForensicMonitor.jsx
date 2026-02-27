@@ -7,6 +7,10 @@ import {
 } from "recharts";
 import { ScatterChart, Scatter } from "recharts";
 import Papa from "papaparse";
+import TopRiskEntities from "./TopRiskEntities";
+import SankeyFlow from "./SankeyFlow";
+import RiskRanking from "./RiskRanking";
+import OriginDestinationPanel from "./OriginDestinationPanel";
 
 export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
