@@ -16,6 +16,7 @@ import {
 import RiskRanking from "./RiskRanking";
 import OriginDestinationPanel from "./OriginDestinationPanel";
 import TopRiskEntities from "./TopRiskEntities";
+import SankeyFlow from "./SankeyFlow";
 
 const CONVERSIONS = {
   'TOBACCO': 1333.33, 
