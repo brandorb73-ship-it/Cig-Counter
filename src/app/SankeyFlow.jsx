@@ -99,7 +99,11 @@ export default function SankeyFlow({ data }) {
     -------------------------- */
 
     let flows = data.map(row => {
-
+flows = flows.filter(f =>
+  f.kg > 0 &&
+  f.tobacco &&
+  f.destination
+);
       const kg = Number(row.Kg || 0);
 
       return {
@@ -174,30 +178,42 @@ export default function SankeyFlow({ data }) {
        STEP 4: Nodes
     -------------------------- */
 
-    const nodeMap = {};
-    let index = 0;
+   const nodeMap = new Map();
+const nodes = [];
 
-    const getNode = (name) => {
-      if (!(name in nodeMap)) {
-        nodeMap[name] = index++;
-      }
-      return nodeMap[name];
-    };
+const getNodeIndex = (name) => {
+  if (!name) return null;
 
-    const links = major.map(l => ({
-      source: getNode(l.source),
-      target: getNode(l.target),
-      value: scale(l.kg),
+  if (!nodeMap.has(name)) {
+    nodeMap.set(name, nodes.length);
+    nodes.push({ name });
+  }
+  return nodeMap.get(name);
+};
 
-      rawKg: l.kg,
-      sticks: l.sticks,
-      risk: l.risk,
-      flags: l.flags,
+const links = [];
 
-      stockpiling: l.stockpiling,
-      stamp_gap: l.stamp_gap,
-      tax_loss: l.tax_loss
-    }));
+major.forEach((l) => {
+  const s = getNodeIndex(l.source);
+  const t = getNodeIndex(l.target);
+
+  // 🚨 HARD GUARD (prevents crash)
+  if (s === null || t === null) return;
+  if (s === t) return;
+
+  links.push({
+    source: s,
+    target: t,
+    value: Math.max(scale(l.kg), 1), // never 0
+    rawKg: l.kg,
+    sticks: l.sticks,
+    risk: l.risk,
+    flags: l.flags || [],
+    stockpiling: l.stockpiling,
+    stamp_gap: l.stamp_gap,
+    tax_loss: l.tax_loss
+  });
+});
 
     const nodes = Object.keys(nodeMap).map(n => ({ name: n }));
 
@@ -247,7 +263,14 @@ export default function SankeyFlow({ data }) {
       </div>
     );
   };
-
+// ✅ FIX 3 GOES HERE
+if (!sankeyData.nodes.length || !sankeyData.links.length) {
+  return (
+    <div className="text-slate-400 text-sm p-4">
+      No valid flow data
+    </div>
+  );
+}
   return (
     <div style={{ width: "100%", height: 520 }}>
 
@@ -270,9 +293,10 @@ export default function SankeyFlow({ data }) {
       {/* SANKEY */}
       <ResponsiveContainer width="100%" height="100%">
         <Sankey
-          data={sankeyData}
-          nodePadding={28}
-          linkCurvature={0.45}
+  data={sankeyData}
+  nodeId="name"   // ✅ ADD HERE
+  nodePadding={28}
+  linkCurvature={0.45}
           margin={{ top: 20, bottom: 20, left: 40, right: 40 }}
         >
           <Tooltip content={<CustomTooltip />} />
