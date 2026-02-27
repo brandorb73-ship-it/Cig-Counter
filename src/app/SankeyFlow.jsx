@@ -1,9 +1,9 @@
 import React, { useMemo } from "react";
 import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-// 1. High-Contrast Node Renderer
+// 1. High-Contrast Node Renderer (Restored Visibility)
 const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
-  if (x === undefined || y === undefined || isNaN(x) || isNaN(y)) return null;
+  if (x === undefined || y === undefined || isNaN(x)) return null;
   const isOut = x > containerWidth / 2;
   return (
     <Layer key={`node-${index}`}>
@@ -23,7 +23,7 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
   );
 };
 
-// 2. Audit Tooltip with Mass Balance Logic
+// 2. Audit Tooltip with Mass Balance Logic (Hover Restored)
 const AuditTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
@@ -41,13 +41,22 @@ const AuditTooltip = ({ active, payload }) => {
           <p className="text-white text-sm font-bold">{data.sourceName} → {data.targetName}</p>
         </div>
         <div className="space-y-3 text-[11px]">
-          <div className="flex justify-between"><span className="text-slate-400">Tobacco:</span><span className="text-white">{data.tobacco.toLocaleString()} KG</span></div>
-          <div className="bg-black/50 p-2 rounded border border-slate-800 space-y-1">
-            <div className="flex justify-between"><span className="text-slate-400 font-italic">Capacity:</span><span className="text-emerald-400 font-mono">{Math.round(capacitySticks).toLocaleString()} sticks</span></div>
-            <div className="flex justify-between"><span className="text-slate-400 font-italic">Exports:</span><span className="text-blue-400 font-mono">{Math.round(exportSticks).toLocaleString()} sticks</span></div>
+          <div className="flex justify-between text-slate-400">
+            <span>Tobacco Input:</span>
+            <span className="text-white font-mono">{data.tobacco.toLocaleString()} KG</span>
           </div>
-          <div className={`p-2 rounded font-black text-center ${stampGap > 0 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'}`}>
-            GAP: {stampGap > 0 ? `+${stampGap.toLocaleString()}` : stampGap.toLocaleString()}
+          <div className="bg-black/50 p-2 rounded border border-slate-800 space-y-1">
+            <div className="flex justify-between italic text-slate-400">
+              <span>Modeled Capacity:</span>
+              <span className="text-emerald-400 font-bold">{Math.round(capacitySticks).toLocaleString()} sticks</span>
+            </div>
+            <div className="flex justify-between italic text-slate-400">
+              <span>Actual Exports:</span>
+              <span className="text-blue-400 font-bold">{Math.round(exportSticks).toLocaleString()} sticks</span>
+            </div>
+          </div>
+          <div className={`p-2 rounded font-black text-center ${stampGap > 1000 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'}`}>
+            STAMP GAP: {stampGap > 0 ? `+${stampGap.toLocaleString()}` : stampGap.toLocaleString()}
           </div>
         </div>
       </div>
@@ -58,76 +67,80 @@ const AuditTooltip = ({ active, payload }) => {
 
 export default function SankeyFlow({ processedData }) {
   const { sankeyData, summary, riskFlags, riskLevel } = useMemo(() => {
-    if (!processedData || processedData.length === 0) return { sankeyData: { nodes: [], links: [] }, summary: null, riskFlags: [], riskLevel: 'LOW' };
+    if (!processedData || processedData.length === 0) 
+      return { sankeyData: { nodes: [], links: [] }, summary: null, riskFlags: [], riskLevel: 'LOW' };
 
+    // STRICT LAYERED NODE MAP to prevent 'depth' errors
     const nodes = [];
-    const nodeMap = new Map();
-    const linkMap = {};
+    const nodeIds = new Map();
+    const linkMap = new Map();
 
-    const getOrCreateNode = (name) => {
-      if (!nodeMap.has(name)) {
+    const addNode = (name, layer) => {
+      const key = `${name}-${layer}`; // Layer-specific key prevents circular loops
+      if (!nodeIds.has(key)) {
         const id = nodes.length;
-        nodes.push({ name });
-        nodeMap.set(name, id);
+        nodes.push({ name, layer });
+        nodeIds.set(key, id);
         return id;
       }
-      return nodeMap.get(name);
+      return nodeIds.get(key);
     };
 
     processedData.forEach((d) => {
-      const origin = d.origin || "Unknown";
-      const entity = d.entity || "Unknown";
-      const dest = d.dest || "Unknown";
-      const stickVol = (Number(d.outflow) || 0) * 1000;
+      const origin = d.origin || "Unknown Origin";
+      const entity = d.entity || "Unknown Entity";
+      const dest = d.dest || "Unknown Destination";
+      const sticks = (Number(d.outflow) || 0) * 1000;
 
-      const sId = getOrCreateNode(origin);
-      const eId = getOrCreateNode(entity);
-      const dId = getOrCreateNode(dest);
+      // Layer 0: Origins | Layer 1: Entities | Layer 2: Destinations
+      const sId = addNode(origin, 0);
+      const eId = addNode(entity, 1);
+      const dId = addNode(dest, 2);
 
-      // CRITICAL FIX: Prevent Circular Depth Error (A cannot target A)
-      if (sId === eId || eId === dId) return;
-
-      const update = (srcId, tgtId, sName, tName) => {
-        const key = `${srcId}-${tgtId}`;
-        if (!linkMap[key]) linkMap[key] = { source: srcId, target: tgtId, sourceName: sName, targetName: tName, value: 0, tobacco: 0, tow: 0 };
-        linkMap[key].value += stickVol;
-        linkMap[key].tobacco += Number(d.tobacco) || 0;
-        linkMap[key].tow += Number(d.tow) || 0;
+      const buildLink = (src, tgt, sName, tName) => {
+        const key = `${src}->${tgt}`;
+        if (!linkMap.has(key)) {
+          linkMap.set(key, { source: src, target: tgt, sourceName: sName, targetName: tName, value: 0, tobacco: 0, tow: 0 });
+        }
+        const l = linkMap.get(key);
+        l.value += sticks;
+        l.tobacco += Number(d.tobacco) || 0;
+        l.tow += Number(d.tow) || 0;
       };
 
-      update(sId, eId, origin, entity);
-      update(eId, dId, entity, dest);
+      buildLink(sId, eId, origin, entity);
+      buildLink(eId, dId, entity, dest);
     });
 
-    const links = Object.values(linkMap).filter(l => l.value > 0);
+    const links = Array.from(linkMap.values()).filter(l => l.value > 0);
     const totalVolume = links.reduce((acc, curr) => acc + curr.value, 0) / 2;
     const topRoute = links.reduce((p, c) => (p.value > c.value ? p : c), links[0]);
 
-    // Risk Engine
+    // Risk & Stockpiling Engine
     const flags = [];
-    let severityScore = 0;
-
-    if (totalVolume > 0 && (topRoute?.value / totalVolume > 0.5)) {
-      flags.push({ type: 'CRITICAL', msg: `CONCENTRATION: 50%+ volume on single route.` });
-      severityScore += 3;
-    }
+    let score = 0;
 
     const totalTobacco = links.reduce((acc, curr) => acc + curr.tobacco, 0) / 2;
     const totalCapacity = (totalTobacco * 0.95) / 0.0007;
+
     if (totalCapacity > totalVolume * 1.25) {
-      flags.push({ type: 'STOCKPILE', msg: `STOCKPILING: Input capacity 25% > Output sticks.` });
-      severityScore += 2;
+      flags.push({ type: 'STOCKPILE', msg: `Stockpiling Alert: Material capacity is 25%+ higher than output.` });
+      score += 2;
     }
-    if (totalVolume > totalCapacity * 1.1) {
-      flags.push({ type: 'GAP', msg: `STAMP GAP: Output exceeds material capacity.` });
-      severityScore += 4;
+    if (totalVolume > totalCapacity * 1.05) {
+      flags.push({ type: 'CRITICAL', msg: `Stamp Gap: Declared exports exceed physical material capacity.` });
+      score += 4;
+    }
+    if (topRoute && (topRoute.value / totalVolume > 0.6)) {
+      flags.push({ type: 'RISK', msg: `Concentration: ${Math.round((topRoute.value / totalVolume) * 100)}% of volume on one route.` });
+      score += 1;
     }
 
-    const level = severityScore > 5 ? 'CRITICAL' : severityScore > 3 ? 'HIGH' : severityScore > 1 ? 'MEDIUM' : 'LOW';
+    const level = score >= 5 ? 'CRITICAL' : score >= 3 ? 'HIGH' : score >= 1 ? 'MEDIUM' : 'LOW';
 
     return { 
       sankeyData: { nodes, links }, 
-      summary: { totalVolume, topRouteName: `${topRoute?.sourceName} → ${topRoute?.targetName}`, hub: nodes[1]?.name },
+      summary: { totalVolume, topRoute: `${topRoute?.sourceName} → ${topRoute?.targetName}`, hub: processedData[0]?.entity },
       riskFlags: flags,
       riskLevel: level
     };
@@ -142,13 +155,10 @@ export default function SankeyFlow({ processedData }) {
 
   return (
     <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[750px] flex flex-col">
-      <div className="flex justify-between items-start mb-8">
-        <div>
-          <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Trade Flow Intelligence</h3>
-          <p className="text-[10px] text-slate-500 uppercase mt-1">Automated Mass-Balance Audit</p>
-        </div>
-        <div className={`px-4 py-2 rounded-lg border-2 font-black text-xs tracking-tighter ${riskStyles[riskLevel]}`}>
-          RISK LEVEL: {riskLevel}
+      <div className="flex justify-between items-center mb-10">
+        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Trade Flow Intelligence</h3>
+        <div className={`px-4 py-1.5 rounded-full border font-black text-[10px] tracking-tighter ${riskStyles[riskLevel]}`}>
+          ENTITY RISK: {riskLevel}
         </div>
       </div>
 
@@ -159,24 +169,25 @@ export default function SankeyFlow({ processedData }) {
             nodePadding={50}
             linkCurvature={0.5}
             node={<SankeyNode />}
-            link={{ stroke: "#38bdf8", strokeOpacity: 0.3, fill: "#38bdf8", fillOpacity: 0.15 }}
+            link={{ stroke: "#38bdf8", strokeOpacity: 0.4, fill: "#38bdf8", fillOpacity: 0.15 }}
           >
             <Tooltip content={<AuditTooltip />} />
           </Sankey>
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-6 space-y-2">
+      <div className="mt-8 space-y-3">
         {riskFlags.map((flag, i) => (
-          <div key={i} className="flex items-center gap-3 p-2 bg-black/40 border border-slate-800 rounded-lg">
-            <span className="text-[9px] font-black px-2 py-0.5 rounded bg-slate-700 text-white uppercase">{flag.type}</span>
-            <p className="text-[11px] text-slate-300 font-medium">{flag.msg}</p>
+          <div key={i} className={`flex items-center gap-3 p-3 border rounded-xl ${flag.type === 'CRITICAL' ? 'bg-red-500/10 border-red-500/20 text-red-200' : 'bg-orange-500/10 border-orange-500/20 text-orange-200'}`}>
+            <span className="text-[9px] font-black px-2 py-0.5 rounded bg-current/20 uppercase">{flag.type}</span>
+            <p className="text-[11px] font-medium">{flag.msg}</p>
           </div>
         ))}
-        <div className="p-4 bg-black/60 rounded-xl border border-slate-800/50">
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Forensic analysis of <strong className="text-white">{summary?.hub}</strong> detects a total volume of <strong className="text-white">{summary?.totalVolume.toLocaleString()} sticks</strong>. 
-            Primary vector identified as <strong className="text-white">{summary?.topRouteName}</strong>. 
+        
+        <div className="p-4 bg-black/40 rounded-xl border border-slate-800/50">
+          <p className="text-xs text-slate-300 leading-relaxed italic">
+            Intelligence confirms <strong className="text-white">{summary?.topRoute}</strong> is the primary corridor. 
+            A total of <strong className="text-white">{summary?.totalVolume.toLocaleString()} sticks</strong> are transiting through <strong className="text-white">{summary?.hub}</strong>. 
             
           </p>
         </div>
