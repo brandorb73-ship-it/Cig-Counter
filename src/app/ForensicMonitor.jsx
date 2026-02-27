@@ -463,30 +463,8 @@ const benford = useMemo(() => {
 </p>
 </div>
 
-      {/* SANKEY FLOW */}
-<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[500px]">
-  <h3 className="text-sm font-bold mb-4 uppercase text-slate-400">
-    Trade Flow Intelligence (Origin → Entity → Destination)
-  </h3>
-
-  <ResponsiveContainer width="100%" height="90%">
-    <Sankey
-      data={sankeyData}
-      nodePadding={20}
-      margin={{ left: 50, right: 50, top: 20, bottom: 20 }}
-    >
-      <SankeyTooltip />
-    </Sankey>
-  </ResponsiveContainer>
-
-  <p className="text-[10px] text-slate-500 mt-3 italic">
-    Highlights trade routing structure. Disconnected origin-destination flows may indicate transit trade or rerouting patterns.
-  </p>
-</div>
-      
+<SankeyFlow processedData={processedData} />
 <RiskRanking processedData={processedData} />
-
 <OriginDestinationPanel processedData={processedData} />
-
 <TopRiskEntities processedData={processedData} />
 </div>
