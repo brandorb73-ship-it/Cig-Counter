@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-// Node Renderer
+// -------------------------
+// REPAIRED NODE RENDERER
+// -------------------------
 const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
   if (x === undefined || isNaN(x)) return null;
   const isOut = x > containerWidth / 2;
@@ -14,7 +16,7 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
         x={isOut ? x - 12 : x + width + 12}
         y={y + height / 2}
         textAnchor={isOut ? "end" : "start"}
-        fontSize="12px"
+        fontSize="11px"
         fontWeight="900"
         fill="#ffffff"
         dominantBaseline="middle"
@@ -25,41 +27,37 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
   );
 };
 
-// Audit Tooltip
+// -------------------------
+// AUDIT TOOLTIP: KG → STICK CONVERSION
+// -------------------------
 const AuditTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     if (!data.sourceName) return null;
 
-    const efficiency = 0.95; // 95% yield
+    const efficiency = 0.95;
     const modelCapacitySticks = Math.round((data.tobacco * efficiency) / 0.0007);
     const actualExportSticks = data.value; 
     const stampGap = actualExportSticks - modelCapacitySticks;
-    const estTaxLoss = stampGap > 0 ? stampGap * 0.15 : 0;
-
+    const estTaxLoss = stampGap > 0 ? (stampGap * 0.15) : 0;
+    
     return (
-      <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl shadow-2xl min-w-[300px] pointer-events-none z-50">
-        <div className="border-b border-slate-800 pb-2 mb-2 text-[10px] text-emerald-400 font-black uppercase tracking-widest">
-          Revenue Protection Audit
-        </div>
-        <div className="text-white text-sm font-bold mb-3">{data.sourceName} → {data.targetName}</div>
+      <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl shadow-2xl min-w-[280px] pointer-events-none z-50">
+        <div className="border-b border-slate-800 pb-2 mb-2 text-[10px] text-emerald-400 font-black uppercase tracking-widest">Forensic Mass-Balance</div>
+        <div className="text-white text-xs font-bold mb-3">{data.sourceName} → {data.targetName}</div>
         <div className="space-y-3 text-[11px]">
           <div className="bg-black/50 p-2 rounded border border-slate-800 space-y-2">
-            <div className="flex justify-between text-slate-400"><span>Tobacco Weight:</span><span className="text-white">{data.tobacco.toLocaleString()} KG</span></div>
+            <div className="flex justify-between text-slate-400"><span>Tobacco Input:</span><span className="text-white font-mono">{data.tobacco.toLocaleString()} KG</span></div>
             <div className="flex justify-between italic text-slate-400"><span>Model Capacity:</span><span className="text-emerald-400 font-bold">{modelCapacitySticks.toLocaleString()} sticks</span></div>
             <div className="flex justify-between italic text-slate-400"><span>Actual Exports:</span><span className="text-blue-400 font-bold">{actualExportSticks.toLocaleString()} sticks</span></div>
           </div>
-
-          <div className={`p-2 rounded font-black text-center ${stampGap > 1000 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'}`}>
+          <div className={`p-2 rounded font-black text-center ${stampGap > 5000 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'}`}>
             STAMP GAP: {stampGap > 0 ? `+${stampGap.toLocaleString()}` : stampGap.toLocaleString()}
           </div>
-
           {stampGap > 0 && (
-            <div className="p-2 rounded bg-orange-500/10 border border-orange-500/30">
-              <div className="flex justify-between items-center font-black">
-                <span className="text-orange-400 uppercase text-[9px]">Est. Tax Leakage:</span>
-                <span className="text-white text-xs">${estTaxLoss.toLocaleString()}</span>
-              </div>
+            <div className="p-2 rounded bg-orange-500/10 border border-orange-500/30 text-white text-xs font-black flex justify-between">
+              <span className="text-orange-400 uppercase text-[9px]">Est. Tax Leakage:</span>
+              <span>${estTaxLoss.toLocaleString()}</span>
             </div>
           )}
         </div>
@@ -69,30 +67,42 @@ const AuditTooltip = ({ active, payload }) => {
   return null;
 };
 
-// Main Sankey Component
 export default function SankeyFlow({ processedData }) {
+  // TIME FILTER STATE
+  const [selectedTime, setSelectedTime] = useState(0);
+
+  // GET UNIQUE TIME SLOTS (Month Year)
+  const timeSlots = useMemo(() => {
+    const slots = [...new Set(processedData.map(d => `${d.month} ${d.year}`))];
+    return slots.length > 0 ? slots : ["All Data"];
+  }, [processedData]);
+
   const { sankeyData, summary, riskFlags, riskLevel } = useMemo(() => {
     if (!processedData || processedData.length === 0) 
       return { sankeyData: { nodes: [], links: [] }, summary: null, riskFlags: [], riskLevel: 'LOW' };
+
+    // FILTER DATA BY TIME
+    const currentTime = timeSlots[selectedTime];
+    const filtered = processedData.filter(d => `${d.month} ${d.year}` === currentTime || currentTime === "All Data");
 
     const nodes = [];
     const nodeIds = new Map();
     const linkMap = new Map();
 
-    // Add node helper
+    // STRICT LAYERED IDS: Appending -L to names prevents circular depth crashes
     const addNode = (name, layer) => {
       const key = `${name}-L${layer}`;
       if (!nodeIds.has(key)) {
         const id = nodes.length;
-        nodes.push({ id, name, layer }); // ✅ Must have numeric id
+        nodes.push({ name, layer });
         nodeIds.set(key, id);
         return id;
       }
       return nodeIds.get(key);
     };
 
-    processedData.forEach((d) => {
-      const sticks = Math.round((Number(d.KG) || 0) / 0.0007); // Convert KG → sticks
+    filtered.forEach((d) => {
+      const stickVolume = Math.round((Number(d.outflow) || 0) * 1000); 
       const sId = addNode(d.origin || "Unknown", 0);
       const eId = addNode(d.entity || "Unknown", 1);
       const dId = addNode(d.dest || "Unknown", 2);
@@ -103,7 +113,7 @@ export default function SankeyFlow({ processedData }) {
           linkMap.set(key, { source: src, target: tgt, sourceName: sName, targetName: tName, value: 0, tobacco: 0, tow: 0 });
         }
         const l = linkMap.get(key);
-        l.value += sticks;
+        l.value += stickVolume;
         l.tobacco += Number(d.tobacco) || 0;
         l.tow += Number(d.tow) || 0;
       };
@@ -113,59 +123,45 @@ export default function SankeyFlow({ processedData }) {
     });
 
     const links = Array.from(linkMap.values()).filter(l => l.value > 0);
-    const totalVolume = links.reduce((acc, l) => acc + l.value, 0) / 2;
-    const totalTobacco = links.reduce((acc, l) => acc + l.tobacco, 0) / 2;
+    const totalVolume = links.reduce((acc, curr) => acc + curr.value, 0) / 2;
+    const totalTobacco = links.reduce((acc, curr) => acc + curr.tobacco, 0) / 2;
     const capacity = Math.round((totalTobacco * 0.95) / 0.0007);
     const totalGap = totalVolume - capacity;
 
+    // RISK FLAGS
     const flags = [];
     let score = 0;
+    if (totalGap > 1000) { flags.push({ type: 'CRITICAL', msg: `TAX LEAKAGE: Est. Loss $${(totalGap * 0.15).toLocaleString()}` }); score += 5; }
+    if (capacity > totalVolume * 1.3) { flags.push({ type: 'STOCKPILE', msg: 'INVENTORY ALERT: 30% Excess Material.' }); score += 2; }
 
-    if (totalGap > 1000) {
-      const totalTaxLoss = totalGap * 0.15;
-      flags.push({ type: 'CRITICAL', msg: `TAX LEAKAGE: Production exceeds material capacity. Est. Loss: $${totalTaxLoss.toLocaleString()}.` });
-      score += 5;
-    }
-
-    if (capacity > totalVolume * 1.3) {
-      flags.push({ type: 'STOCKPILE', msg: 'STOCKPILING ALERT: Input materials exceed output by 30%.' });
-      score += 2;
-    }
-
-    const towRatio = (links.reduce((acc, l) => acc + l.tow, 0) / 2) / totalTobacco;
-    if (totalTobacco > 0 && (towRatio < 0.05 || towRatio > 0.15)) {
-      flags.push({ type: 'RECIPE', msg: 'RECIPE ANOMALY: Filter tow ratio inconsistent.' });
-      score += 1;
-    }
-
-    const level = score >= 5 ? 'CRITICAL' : score >= 3 ? 'HIGH' : score >= 1 ? 'MEDIUM' : 'LOW';
+    const level = score >= 5 ? 'CRITICAL' : score >= 3 ? 'HIGH' : 'LOW';
     const topRoute = links.reduce((p, c) => (p.value > c.value ? p : c), links[0]);
 
-    return {
-      sankeyData: { nodes, links },
+    return { 
+      sankeyData: { nodes, links }, 
       summary: { totalVolume, totalGap, topRoute: `${topRoute?.sourceName} → ${topRoute?.targetName}`, hub: processedData[0]?.entity },
       riskFlags: flags,
       riskLevel: level
     };
-  }, [processedData]);
-
-  const levelStyles = {
-    CRITICAL: "text-red-500 border-red-500 bg-red-500/10",
-    HIGH: "text-orange-500 border-orange-500 bg-orange-500/10",
-    MEDIUM: "text-yellow-500 border-yellow-500 bg-yellow-500/10",
-    LOW: "text-emerald-500 border-emerald-500 bg-emerald-500/10"
-  };
+  }, [processedData, selectedTime, timeSlots]);
 
   return (
-    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[750px] flex flex-col">
-      <div className="flex justify-between items-center mb-10">
-        <div>
-          <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Trade Flow Intelligence</h3>
-          <p className="text-[10px] text-slate-500 uppercase mt-1 tracking-tighter">Mass-Balance Revenue Protection Model</p>
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[850px] flex flex-col shadow-2xl">
+      {/* TIME SLIDER HEADER */}
+      <div className="mb-10 p-4 bg-black/40 rounded-xl border border-slate-800">
+        <div className="flex justify-between items-center mb-4">
+          <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+            Audit Timeline: {timeSlots[selectedTime]}
+          </label>
+          <div className={`px-4 py-1.5 rounded-full border-2 font-black text-[10px] ${riskLevel === 'CRITICAL' ? 'border-red-500 text-red-500' : 'border-emerald-500 text-emerald-400'}`}>
+            RISK: {riskLevel}
+          </div>
         </div>
-        <div className={`px-4 py-1.5 rounded-full border-2 font-black text-[10px] tracking-tighter ${levelStyles[riskLevel]}`}>
-          ENTITY RISK: {riskLevel}
-        </div>
+        <input 
+          type="range" min="0" max={timeSlots.length - 1} value={selectedTime} 
+          onChange={(e) => setSelectedTime(parseInt(e.target.value))}
+          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+        />
       </div>
 
       <div className="flex-grow">
@@ -175,7 +171,7 @@ export default function SankeyFlow({ processedData }) {
             nodePadding={50}
             linkCurvature={0.5}
             node={<SankeyNode />}
-            link={{ stroke: "#38bdf8", strokeOpacity: 0.4, fill: "#38bdf8", fillOpacity: 0.15 }}
+            link={{ stroke: "#38bdf8", strokeOpacity: 0.3, fill: "#38bdf8", fillOpacity: 0.1 }}
           >
             <Tooltip content={<AuditTooltip />} />
           </Sankey>
@@ -184,21 +180,14 @@ export default function SankeyFlow({ processedData }) {
 
       <div className="mt-8 space-y-3">
         {riskFlags.map((f, i) => (
-          <div key={i} className={`flex items-center gap-3 p-3 border rounded-xl ${f.type === 'CRITICAL' ? 'bg-red-500/10 border-red-500/20' : 'bg-orange-500/10 border-orange-500/20'}`}>
-            <span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${f.type === 'CRITICAL' ? 'bg-red-500 text-white' : 'bg-orange-500 text-white'}`}>{f.type}</span>
+          <div key={i} className="flex items-center gap-3 p-3 bg-black/40 border border-slate-800 rounded-xl">
+            <span className="text-[9px] font-black px-2 py-1 rounded bg-red-600 text-white uppercase">{f.type}</span>
             <p className="text-[11px] text-slate-200 font-medium">{f.msg}</p>
           </div>
         ))}
-
-        <div className="p-4 bg-black/40 rounded-xl border border-slate-800/50">
-          <p className="text-xs text-slate-400 leading-relaxed italic">
-            Audit confirms <strong className="text-white">{summary?.hub}</strong> processed <strong className="text-white">{summary?.totalVolume.toLocaleString()} sticks</strong>. 
-            The primary corridor is <strong className="text-white">{summary?.topRoute}</strong>. 
-            <br/>
-            <strong className="text-emerald-300">Forensic Insight:</strong> {summary?.totalGap > 0 
-              ? `Production exceeds material capacity by ${summary?.totalGap.toLocaleString()} sticks, suggesting potential tax leakage.` 
-              : `Material consumption aligns with declared output volume.`}
-          </p>
+        <div className="p-4 bg-black/60 rounded-xl border border-slate-800/50 text-[11px] text-slate-400 italic">
+          Audit Insight: Total volume for {timeSlots[selectedTime]} is <strong className="text-white">{summary?.totalVolume.toLocaleString()} sticks</strong>. 
+          {summary?.totalGap > 0 ? " Undeclared production detected." : " Material inputs align with exports."}
         </div>
       </div>
     </div>
