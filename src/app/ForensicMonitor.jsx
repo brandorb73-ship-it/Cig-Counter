@@ -472,3 +472,5 @@ const benford = useMemo(() => {
 <OriginDestinationPanel processedData={processedData} />
 <TopRiskEntities processedData={processedData} />
 </div>
+);
+}
