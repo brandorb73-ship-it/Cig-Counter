@@ -178,7 +178,7 @@ flows = flows.filter(f =>
        STEP 4: Nodes
     -------------------------- */
 
-   const nodeMap = new Map();
+const nodeMap = new Map();
 const nodes = [];
 
 const getNodeIndex = (name) => {
@@ -188,6 +188,7 @@ const getNodeIndex = (name) => {
     nodeMap.set(name, nodes.length);
     nodes.push({ name });
   }
+
   return nodeMap.get(name);
 };
 
@@ -215,9 +216,7 @@ major.forEach((l) => {
   });
 });
 
-    const nodes = Object.keys(nodeMap).map(n => ({ name: n }));
-
-    const summary = generateSummary(flows);
+      const summary = generateSummary(flows);
 
     return { nodes, links, summary };
 
