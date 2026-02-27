@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-// 1. NODE RENDERER: High visibility for dark mode
+// 1. NODE RENDERER: High-contrast nodes for intelligence dashboards
 const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
   if (x === undefined || isNaN(x)) return null;
   const isOut = x > containerWidth / 2;
@@ -25,19 +25,19 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
   );
 };
 
-// 2. AUDIT TOOLTIP: Mass Balance & Tax Loss Logic
+// 2. AUDIT TOOLTIP: Mass Balance, Stick Conversion, and Tax Leakage
 const AuditTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     if (!data.sourceName) return null;
 
-    // Forensic Constants
+    // Forensic Constants: 0.7g tobacco per stick (0.0007 KG) @ 95% yield
     const efficiency = 0.95;
     const modelCapacitySticks = Math.round((data.tobacco * efficiency) / 0.0007);
     const actualExportSticks = data.value; 
     const stampGap = actualExportSticks - modelCapacitySticks;
     
-    // Tax Estimation: Assuming $0.15 excise per stick (Adjustable based on jurisdiction)
+    // Revenue Protection: Estimated $0.15 excise per stick
     const estTaxLoss = stampGap > 0 ? (stampGap * 0.15) : 0;
     
     return (
@@ -79,6 +79,7 @@ export default function SankeyFlow({ processedData }) {
     const nodeIds = new Map();
     const linkMap = new Map();
 
+    // STRICT LAYERED MAPPING: Appending layer tags fixes the "depth" error
     const addNode = (name, layer) => {
       const key = `${name}-L${layer}`;
       if (!nodeIds.has(key)) {
@@ -120,20 +121,20 @@ export default function SankeyFlow({ processedData }) {
     const flags = [];
     let score = 0;
 
-    // Feature: Stamp Gap & Tax Loss Flag
+    // TAX LEAKAGE ANALYSIS
     if (totalGap > 1000) {
       const totalTaxLoss = totalGap * 0.15;
       flags.push({ type: 'CRITICAL', msg: `TAX LEAKAGE: Unaccounted production detected. Est. Loss: $${totalTaxLoss.toLocaleString()}.` });
       score += 5;
     }
 
-    // Feature: Stockpiling Flag
+    // STOCKPILING ANALYSIS
     if (capacity > totalVolume * 1.3) {
       flags.push({ type: 'STOCKPILE', msg: 'INVENTORY RISK: Input materials exceed output by 30%.' });
       score += 2;
     }
 
-    // Feature: Precursor Ratio Audit (Tow vs Tobacco)
+    // PRECURSOR RATIO AUDIT (Tow vs Tobacco)
     const towRatio = (links.reduce((acc, l) => acc + l.tow, 0) / 2) / totalTobacco;
     if (totalTobacco > 0 && (towRatio < 0.05 || towRatio > 0.15)) {
       flags.push({ type: 'RECIPE', msg: 'RECIPE ANOMALY: Filter tow ratio is inconsistent with standard production.' });
@@ -195,10 +196,10 @@ export default function SankeyFlow({ processedData }) {
         <div className="p-4 bg-black/40 rounded-xl border border-slate-800/50">
           <p className="text-xs text-slate-400 leading-relaxed italic">
             Audit confirms <strong className="text-white">{summary?.hub}</strong> processed <strong className="text-white">{summary?.totalVolume.toLocaleString()} sticks</strong>. 
-            Primary Corridor: <strong className="text-white">{summary?.topRoute}</strong>. 
+            The primary corridor is <strong className="text-white">{summary?.topRoute}</strong>. 
             <br/>
-            <strong className="text-emerald-300">AI Summary:</strong> {summary?.totalGap > 0 
-              ? `Production exceeds material capacity by ${summary?.totalGap.toLocaleString()} sticks, suggesting undeclared inputs or external sourcing.` 
+            <strong className="text-emerald-300">Forensic Insight:</strong> {summary?.totalGap > 0 
+              ? `Production exceeds material capacity by ${summary?.totalGap.toLocaleString()} sticks, suggesting potential tax leakage.` 
               : `Material consumption aligns with declared output volume.`}
           </p>
         </div>
