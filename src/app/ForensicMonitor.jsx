@@ -539,23 +539,30 @@ const benford = useMemo(() => {
 </p>
   </div>
 
-  {/* DESTINATION */}
-  <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-    <h4 className="text-xs uppercase text-slate-400 mb-4">Destination Intelligence</h4>
-    {Object.entries(
-      processedData.reduce((acc,d)=>{
-        acc[d.dest] = (acc[d.dest]||0)+d.outflow;
-        return acc;
-      },{})
-    ).map(([k,v],i)=>(
-      <div key={i} className="flex justify-between text-xs mb-2">
-        <span>{k}</span>
-        <span>{Math.round(v)}</span>
-      </div>
-    ))}
-  </div>
+ {/* DESTINATION */}
+<div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+  <h4 className="text-xs uppercase text-slate-400 mb-4">Destination Intelligence</h4>
+  {Object.entries(
+    processedData.reduce((acc,d)=>{
+      acc[d.dest] = (acc[d.dest]||0)+d.outflow;
+      return acc;
+    },{})
+  ).map(([k,v],i)=>(
+    <div key={i} className="flex justify-between text-xs mb-2">
+      <span>{k}</span>
+      <span>{Math.round(v)}</span>
+    </div>
+  ))}
 
+  {/* ✅ SUMMARY OUTSIDE LOOP */}
+  <div className="border-t border-slate-800 mt-3 pt-3">
+    <p className="text-[10px] text-slate-500 italic">
+      Export distribution shows key destination markets and potential concentration risks.
+    </p>
+  </div>
 </div>
+
+{/* TOP RISK ENTITIES */}
 <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 mt-6">
   <h4 className="text-xs uppercase text-slate-400 mb-4">
     Top Risk Entities
@@ -573,12 +580,13 @@ const benford = useMemo(() => {
     <div key={i} className="flex justify-between text-xs mb-2">
       <span>{name}</span>
       <span className="text-red-400">{score}</span>
-      <p className="text-[10px] text-slate-500 mt-3 italic">
-  Geographic concentration highlights sourcing dependencies and potential high-risk trade corridors.
-</p>
     </div>
   ))}
+
+  {/* ✅ SUMMARY OUTSIDE LOOP */}
+  <div className="border-t border-slate-800 mt-3 pt-3">
+    <p className="text-[10px] text-slate-500 italic">
+      High-risk entities show disproportionate export behavior relative to input capacity.
+    </p>
+  </div>
 </div>
-    </div>
-  );
-}
