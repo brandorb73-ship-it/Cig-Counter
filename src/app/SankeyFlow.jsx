@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-// Node renderer
+// Node Renderer
 const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
   if (x === undefined || isNaN(x)) return null;
   const isOut = x > containerWidth / 2;
@@ -25,13 +25,13 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
   );
 };
 
-// Audit tooltip
+// Audit Tooltip
 const AuditTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     if (!data.sourceName) return null;
 
-    const efficiency = 0.95;
+    const efficiency = 0.95; // 95% yield
     const modelCapacitySticks = Math.round((data.tobacco * efficiency) / 0.0007);
     const actualExportSticks = data.value; 
     const stampGap = actualExportSticks - modelCapacitySticks;
@@ -45,18 +45,9 @@ const AuditTooltip = ({ active, payload }) => {
         <div className="text-white text-sm font-bold mb-3">{data.sourceName} → {data.targetName}</div>
         <div className="space-y-3 text-[11px]">
           <div className="bg-black/50 p-2 rounded border border-slate-800 space-y-2">
-            <div className="flex justify-between text-slate-400">
-              <span>Tobacco Weight:</span>
-              <span className="text-white">{data.tobacco.toLocaleString()} KG</span>
-            </div>
-            <div className="flex justify-between italic text-slate-400">
-              <span>Model Capacity:</span>
-              <span className="text-emerald-400 font-bold">{modelCapacitySticks.toLocaleString()} sticks</span>
-            </div>
-            <div className="flex justify-between italic text-slate-400">
-              <span>Actual Exports:</span>
-              <span className="text-blue-400 font-bold">{actualExportSticks.toLocaleString()} sticks</span>
-            </div>
+            <div className="flex justify-between text-slate-400"><span>Tobacco Weight:</span><span className="text-white">{data.tobacco.toLocaleString()} KG</span></div>
+            <div className="flex justify-between italic text-slate-400"><span>Model Capacity:</span><span className="text-emerald-400 font-bold">{modelCapacitySticks.toLocaleString()} sticks</span></div>
+            <div className="flex justify-between italic text-slate-400"><span>Actual Exports:</span><span className="text-blue-400 font-bold">{actualExportSticks.toLocaleString()} sticks</span></div>
           </div>
 
           <div className={`p-2 rounded font-black text-center ${stampGap > 1000 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'}`}>
@@ -78,7 +69,7 @@ const AuditTooltip = ({ active, payload }) => {
   return null;
 };
 
-// Main Sankey
+// Main Sankey Component
 export default function SankeyFlow({ processedData }) {
   const { sankeyData, summary, riskFlags, riskLevel } = useMemo(() => {
     if (!processedData || processedData.length === 0) 
@@ -88,11 +79,12 @@ export default function SankeyFlow({ processedData }) {
     const nodeIds = new Map();
     const linkMap = new Map();
 
+    // Add node helper
     const addNode = (name, layer) => {
       const key = `${name}-L${layer}`;
       if (!nodeIds.has(key)) {
         const id = nodes.length;
-        nodes.push({ id, name, layer }); // ✅ id added
+        nodes.push({ id, name, layer }); // ✅ Must have numeric id
         nodeIds.set(key, id);
         return id;
       }
@@ -100,7 +92,7 @@ export default function SankeyFlow({ processedData }) {
     };
 
     processedData.forEach((d) => {
-      const stickVolume = Math.round((Number(d.KG) || 0) / 0.0007); // convert KG to sticks directly
+      const sticks = Math.round((Number(d.KG) || 0) / 0.0007); // Convert KG → sticks
       const sId = addNode(d.origin || "Unknown", 0);
       const eId = addNode(d.entity || "Unknown", 1);
       const dId = addNode(d.dest || "Unknown", 2);
@@ -111,7 +103,7 @@ export default function SankeyFlow({ processedData }) {
           linkMap.set(key, { source: src, target: tgt, sourceName: sName, targetName: tName, value: 0, tobacco: 0, tow: 0 });
         }
         const l = linkMap.get(key);
-        l.value += stickVolume;
+        l.value += sticks;
         l.tobacco += Number(d.tobacco) || 0;
         l.tow += Number(d.tow) || 0;
       };
@@ -121,8 +113,8 @@ export default function SankeyFlow({ processedData }) {
     });
 
     const links = Array.from(linkMap.values()).filter(l => l.value > 0);
-    const totalVolume = links.reduce((acc, curr) => acc + curr.value, 0) / 2;
-    const totalTobacco = links.reduce((acc, curr) => acc + curr.tobacco, 0) / 2;
+    const totalVolume = links.reduce((acc, l) => acc + l.value, 0) / 2;
+    const totalTobacco = links.reduce((acc, l) => acc + l.tobacco, 0) / 2;
     const capacity = Math.round((totalTobacco * 0.95) / 0.0007);
     const totalGap = totalVolume - capacity;
 
@@ -142,15 +134,15 @@ export default function SankeyFlow({ processedData }) {
 
     const towRatio = (links.reduce((acc, l) => acc + l.tow, 0) / 2) / totalTobacco;
     if (totalTobacco > 0 && (towRatio < 0.05 || towRatio > 0.15)) {
-      flags.push({ type: 'RECIPE', msg: 'RECIPE ANOMALY: Filter tow ratio is inconsistent with standard production.' });
+      flags.push({ type: 'RECIPE', msg: 'RECIPE ANOMALY: Filter tow ratio inconsistent.' });
       score += 1;
     }
 
     const level = score >= 5 ? 'CRITICAL' : score >= 3 ? 'HIGH' : score >= 1 ? 'MEDIUM' : 'LOW';
     const topRoute = links.reduce((p, c) => (p.value > c.value ? p : c), links[0]);
 
-    return { 
-      sankeyData: { nodes, links }, 
+    return {
+      sankeyData: { nodes, links },
       summary: { totalVolume, totalGap, topRoute: `${topRoute?.sourceName} → ${topRoute?.targetName}`, hub: processedData[0]?.entity },
       riskFlags: flags,
       riskLevel: level
