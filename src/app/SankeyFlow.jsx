@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-// 1. Custom Label Component to fix visibility on black background
+// 1. Custom Node with brighter labels and distinct blocks
 const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
   const isOut = x > containerWidth / 2;
   return (
@@ -11,16 +11,17 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
         y={y}
         width={width}
         height={height}
-        fill="#38bdf8"
-        fillOpacity={0.8}
+        fill="#38bdf8" // Bright cyan for nodes
+        fillOpacity={0.9}
+        rx={2}
       />
       <text
-        x={isOut ? x - 6 : x + width + 6}
+        x={isOut ? x - 8 : x + width + 8}
         y={y + height / 2}
         textAnchor={isOut ? "end" : "start"}
-        fontSize="10px"
+        fontSize="11px"
         fontWeight="bold"
-        fill="#e2e8f0"
+        fill="#ffffff" // Pure white for maximum contrast
         verticalAnchor="middle"
       >
         {payload.name}
@@ -30,14 +31,13 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
 };
 
 export default function SankeyFlow({ processedData }) {
-  // 2. Data Processing & Aggregation
-  const { sankeyData, summary } = useMemo(() => {
+  const { sankeyData, summary, riskFlags } = useMemo(() => {
     if (!processedData || processedData.length === 0) {
-      return { sankeyData: { nodes: [], links: [] }, summary: null };
+      return { sankeyData: { nodes: [], links: [] }, summary: null, riskFlags: [] };
     }
 
     const nodeSet = new Set();
-    const linkMap = {}; // Use a map to aggregate values for the same path
+    const linkMap = {};
 
     processedData.forEach((d) => {
       const origin = d.origin || "Unknown Origin";
@@ -49,11 +49,8 @@ export default function SankeyFlow({ processedData }) {
       nodeSet.add(entity);
       nodeSet.add(dest);
 
-      // Aggregate Origin -> Entity
       const key1 = `${origin}|${entity}`;
       linkMap[key1] = (linkMap[key1] || 0) + val;
-
-      // Aggregate Entity -> Destination
       const key2 = `${entity}|${dest}`;
       linkMap[key2] = (linkMap[key2] || 0) + val;
     });
@@ -67,37 +64,39 @@ export default function SankeyFlow({ processedData }) {
       return {
         source: nodeIndex[source],
         target: nodeIndex[target],
-        value: Math.max(1, value), // Ensure visible flow
+        value: Math.max(1, value),
         sourceName: source,
         targetName: target
       };
     });
 
-    // 3. AI Insights Logic (Dynamic Summary)
-    const topRoute = formattedLinks.reduce((prev, current) => 
-      (prev.value > current.value) ? prev : current
-    );
-
-    const summaryData = {
-      primaryHub: processedData[0]?.entity || "the facility",
-      topRoute: `${topRoute.sourceName} → ${topRoute.targetName}`,
-      totalVolume: formattedLinks.reduce((acc, curr) => acc + curr.value, 0) / 2,
-      uniqueDestinations: new Set(processedData.map(d => d.dest)).size
-    };
+    // AI Insight Logic
+    const totalFlow = formattedLinks.reduce((acc, curr) => acc + curr.value, 0) / 2;
+    const topRoute = formattedLinks.reduce((prev, current) => (prev.value > current.value) ? prev : current);
+    
+    // Risk Detection: Route exceeds 40% of total flow
+    const flags = [];
+    if ((topRoute.value / totalFlow) > 0.4) {
+      flags.push(`CRITICAL CONCENTRATION: Route ${topRoute.sourceName} → ${topRoute.targetName} commands ${Math.round((topRoute.value / totalFlow) * 100)}% of total volume.`);
+    }
 
     return { 
       sankeyData: { nodes, links: formattedLinks }, 
-      summary: summaryData 
+      summary: {
+        primaryHub: processedData[0]?.entity,
+        topRoute: `${topRoute.sourceName} → ${topRoute.targetName}`,
+        totalVolume: totalFlow,
+        destCount: new Set(processedData.map(d => d.dest)).size
+      },
+      riskFlags: flags
     };
   }, [processedData]);
 
-  if (!sankeyData.nodes.length) {
-    return <div className="text-xs text-slate-500">No flow data available</div>;
-  }
+  if (!sankeyData.nodes.length) return <div className="text-xs text-slate-500">No flow data</div>;
 
   return (
-    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[500px] flex flex-col">
-      <h3 className="text-xs font-black uppercase text-slate-400 mb-8">
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[550px] flex flex-col">
+      <h3 className="text-xs font-black uppercase text-slate-400 mb-8 tracking-widest">
         Trade Flow Intelligence (Origin → Entity → Destination)
       </h3>
 
@@ -105,31 +104,35 @@ export default function SankeyFlow({ processedData }) {
         <ResponsiveContainer width="100%" height="100%">
           <Sankey
             data={sankeyData}
-            nodePadding={30}
+            nodePadding={40}
             linkCurvature={0.5}
-            node={<SankeyNode />} // Use the custom labels
-            link={{ stroke: "#1e293b" }}
+            node={<SankeyNode />}
+            // Darker, more visible links with cyan highlight
+            link={{ stroke: "#334155", strokeOpacity: 0.6, fill: "#1e293b" }}
           >
             <Tooltip 
-              contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155' }}
-              itemStyle={{ color: '#38bdf8' }}
+              contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px' }}
             />
           </Sankey>
         </ResponsiveContainer>
       </div>
 
-      {/* ✅ DYNAMIC AI SUMMARY */}
-      <div className="mt-6 p-4 bg-black/40 rounded-xl border border-slate-800/50">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-          <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-tighter">AI Flow Analysis</span>
+      {/* ✅ AI SUMMARY & RISK FLAGS */}
+      <div className="mt-6 space-y-3">
+        {riskFlags.map((flag, i) => (
+          <div key={i} className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+            <div className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded">RISK FLAG</div>
+            <p className="text-[11px] text-red-200 font-medium">{flag}</p>
+          </div>
+        ))}
+
+        <div className="p-4 bg-black/40 rounded-xl border border-slate-800/50">
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Intelligence confirms <strong className="text-white">{summary?.topRoute}</strong> is the primary corridor. 
+            A total of <strong className="text-white">{summary?.totalVolume.toLocaleString()} units</strong> are transiting through <strong className="text-white">{summary?.primaryHub}</strong>. 
+            {summary?.destCount > 1 ? `Data shows distribution across ${summary?.destCount} destination points.` : "Alert: All outflow is restricted to a single destination point."}
+          </p>
         </div>
-        <p className="text-xs text-slate-300 leading-relaxed">
-          The intelligence engine has identified <strong className="text-white">{summary?.topRoute}</strong> as the high-velocity corridor, 
-          handling the bulk of the <strong className="text-white">{summary?.totalVolume.toLocaleString()} units</strong> tracked. 
-          Flow is centralizing through <strong className="text-white">{summary?.primaryHub}</strong> across <strong className="text-white">{summary?.uniqueDestinations} destinations</strong>. 
-          {summary?.uniqueDestinations > 3 ? " Diversified routing suggests a complex distribution network." : " Narrow destination focus indicates a dedicated supply chain."}
-        </p>
       </div>
     </div>
   );
