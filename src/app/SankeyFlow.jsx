@@ -36,8 +36,8 @@ const AuditTooltip = ({ active, payload }) => {
   if (!d || !d.sourceName) return null;
 
   // Conversion: 1kg tobacco = ~1,357 sticks (at 95% yield)
-  const precursorCapacity = (d.tobaccoKG * 0.95) / 0.0007;
-  const exportSticks = d.actualSticks;
+const precursorSticks = d.tobaccoKG * 0.95 / 0.0007;
+const exportSticks = d.actualSticks / 0.0007; // if stored as KG
   const gap = Math.round(exportSticks - precursorCapacity);
   const taxLoss = gap > 0 ? gap * 0.15 : 0;
 
@@ -61,14 +61,24 @@ const AuditTooltip = ({ active, payload }) => {
    MAIN COMPONENT
 ========================= */
 export default function SankeyFlow({ processedData }) {
-  const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
-    if (!processedData || processedData.length === 0) {
-      return { sankeyData: { nodes: [], links: [] }, riskLevel: "LOW", riskFlags: [], summary: null };
-    }
+const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
+  if (!processedData || processedData.length === 0) {
+    return { sankeyData: { nodes: [], links: [] }, riskLevel: "LOW", riskFlags: [], summary: null };
+  }
 
-    const nodes = [];
-    const nodeMap = new Map();
-    const linkMap = new Map();
+  const cleanData = processedData.filter(d => {
+    if (!d || Object.values(d).every(v => !v)) return false;
+
+    const origin = d.origin || d.Origin;
+    const dest = d.dest || d.Dest || d.Destination;
+    const outflow = d.outflow || d.Outflow;
+
+    return origin && dest && outflow && Number(outflow) > 0;
+  });
+
+  const nodes = [];
+  const nodeMap = new Map();
+  const linkMap = new Map();
 
     // 1. DATA CLEANING & UNIT CONVERSION
     const addNode = (name, layer) => {
@@ -84,7 +94,7 @@ export default function SankeyFlow({ processedData }) {
       return nodeMap.get(key);
     };
 
-    processedData.forEach((d) => {
+    cleanData.forEach((d) => {
       // Normalize Column Keys (Supports 'origin' or 'Origin', etc)
       const origin = d.origin || d.Origin || "Unknown";
       const entity = d.entity || d.Entity || "Production Hub";
@@ -93,21 +103,22 @@ export default function SankeyFlow({ processedData }) {
       // UNIT CONVERSION
       // If inflow/outflow is in KG, convert to sticks (1kg = 1000 sticks approx)
       const tobaccoKG = Number(d.tobacco) || Number(d.Tobacco) || 0;
-      const unit = (d.unit || d.Unit || "").toLowerCase();
-const rawOutflow = Number(d.outflow) || Number(d.Outflow) || 0;
+      const KG_TO_STICKS = 1 / 0.0007; // ~1428 sticks per KG
+const YIELD = 0.95;
 
-let actualSticks = 0;
+// Inputs
+const tobaccoKG = Number(d.tobacco) || Number(d.Tobacco) || 0;
+const cigKG = Number(d.outflow) || Number(d.Outflow) || 0;
 
-// If already KG → convert using same mass logic
-if (unit === "kg") {
-  actualSticks = (rawOutflow * 0.95) / 0.0007;
-} else {
-  // assume it's already sticks
-  actualSticks = rawOutflow;
-}
+// Convert BOTH to sticks
+const precursorSticks = tobaccoKG * YIELD * KG_TO_STICKS;
+const exportSticks = cigKG * KG_TO_STICKS;
+
+// Gap logic
+const gap = exportSticks - precursorSticks;
 
       // Visual scaling for the chart
-      const scaledValue = Math.log10(actualSticks + 1) * 1000;
+      const scaledValue = exportSticks; // TRUE VALUE
 
       const s = addNode(origin, 0);
       const e = addNode(entity, 1);
@@ -186,10 +197,79 @@ if (unit === "kg") {
           </div>
         ))}
         <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded text-[11px] text-slate-400 italic">
-          <strong className="text-blue-400 not-italic">AI Forensic Summary:</strong> The hub <strong className="text-white">{summary?.hub}</strong> processed <strong className="text-white">{Math.round(summary?.totalSticks).toLocaleString()} sticks</strong>. 
-          {summary?.taxLoss > 0 
-            ? ` Mass-balance reveals a stamp gap against precursor capacity (${Math.round(summary?.capacity).toLocaleString()} sticks), indicating a potential tax leakage of $${summary?.taxLoss.toLocaleString()}.` 
-            : " No significant volume discrepancies detected."}
+<strong className="text-blue-400 not-italic">AI Forensic Summary:</strong>{" "}
+
+The hub <strong className="text-white">{summary?.hub}</strong> supplied{" "}
+<strong className="text-white">
+  {summary?.destinations?.slice(0, 3).join(", ")}
+</strong>
+{summary?.destinations?.length > 3 ? " and other markets" : ""},{" "}
+processing{" "}
+<strong className="text-white">
+  {Math.round(summary?.totalSticks).toLocaleString()} sticks
+</strong>{" "}
+(after converting KG volumes into stick equivalents).{" "}
+
+{/* 🔴 TAX LOSS GRADING — ADD IT RIGHT HERE */}
+{summary?.taxLoss > 0 && (
+  <span className={`font-black ${
+    summary?.severity === "CRITICAL" ? "text-red-500" :
+    summary?.severity === "HIGH" ? "text-orange-400" :
+    summary?.severity === "MEDIUM" ? "text-yellow-400" :
+    "text-emerald-400"
+  }`}>
+    [{summary?.severity} RISK]
+  </span>
+)}{" "}
+
+{/* 🧠 DYNAMIC EXPLANATION */}
+{summary?.riskType === "UNDER_DECLARATION" && (
+  <>
+    Mass-balance indicates output exceeds feasible production capacity (
+    {Math.round(summary?.capacity).toLocaleString()} sticks), suggesting
+    systematic under-declaration of production or misreporting of inputs.
+  </>
+)}
+
+{summary?.riskType === "STOCKPILING" && (
+  <>
+    Precursor inflows significantly exceed declared cigarette output,
+    indicating potential stockpiling, buffering, or delayed distribution risk.
+  </>
+)}
+
+{summary?.riskType === "DIVERSION" && (
+  <>
+    A measurable gap between precursor input and export volumes suggests
+    potential diversion into unregulated or parallel markets.
+  </>
+)}
+
+{summary?.riskType === "BALANCED" && (
+  <>
+    Precursor inputs and cigarette outputs are broadly aligned, indicating
+    no material anomaly in production flows.
+  </>
+)}
+
+{/* 📊 TOP CORRIDOR */}
+{summary?.topCorridor && summary?.taxLoss > 0 && (
+  <>
+    {" "}The highest-risk corridor identified is{" "}
+    <strong className="text-red-400">{summary?.topCorridor}</strong>, 
+    contributing disproportionately to the detected discrepancy.
+  </>
+)}
+
+{/* 💰 TAX LOSS FINAL */}
+{summary?.taxLoss > 0 && (
+  <>
+    {" "}Estimated revenue exposure is{" "}
+    <strong className="text-red-500">
+      ${summary?.taxLoss.toLocaleString()}
+    </strong>.
+  </>
+)}
         </div>
       </div>
     </div>
