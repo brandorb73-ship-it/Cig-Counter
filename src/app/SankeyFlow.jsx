@@ -41,7 +41,13 @@ const CustomTooltip = ({ active, payload }) => {
     </div>
   );
 };
-
+if (!rawData || !Array.isArray(rawData)) {
+  return (
+    <div className="text-slate-500 p-4">
+      Loading forensic data...
+    </div>
+  );
+}
 // ---------- MAIN COMPONENT ----------
 
 export default function ForensicSankey({ rawData }) {
@@ -49,7 +55,9 @@ export default function ForensicSankey({ rawData }) {
   const sankeyData = useMemo(() => {
 
     // ---------- CLEAN DATA ----------
-    const cleanData = rawData.map((d, i) => ({
+    const safeData = Array.isArray(rawData) ? rawData : [];
+
+const cleanData = safeData.map((d, i) => ({
       id: i,
       hub: d.Entity || "Unknown Hub",
 
@@ -57,7 +65,12 @@ export default function ForensicSankey({ rawData }) {
       paperKG: parseNum(d.Paper),
       filterKG: parseNum(d.Filter),
       towKG: parseNum(d.Tow),
-      cigKG: parseNum(d["Cigarette Exports"]),
+      cigKG: parseNum(
+  d["Cigarette Exports"] ||
+  d["Cigarette Exports "] || 
+  d.cigaretteExports ||
+  d.outflow
+),
 
       tobaccoOrigin: d["Tobacco Origin"] || "Unknown",
       paperOrigin: d["Paper Origin"] || "Unknown",
