@@ -2,53 +2,48 @@ import React, { useMemo } from "react";
 import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function ChartDashboard({ data }) {
- // 1. CLEAN + NORMALIZE DATA (Diagnostic Version)
-  const cleanData = useMemo(() => {
-    // DIAGNOSTIC LOG: Open your browser console (F12) to see this!
-    console.log("Raw data received by Chart:", data);
+const cleanData = useMemo(() => {
+    // 🔍 DEBUG: Look at your browser console to see what 'data' actually is
+    console.log("Raw Data Input:", data);
 
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      console.error("Data is either not an array or is empty.");
-      return [];
-    }
-
+    if (!data) return [];
+    
+    // Support for cases where data might be nested in an object (e.g. { data: [...] })
+    const actualArray = Array.isArray(data) ? data : (data.records || data.data || []);
+    
     const KG_PER_STICK = 0.0007;
 
-    return data
-      .map((d, index) => {
-        // Fallback logic: if 'tobaccoOrigin' is missing, try 'origin' or 'Source'
-        const tOrigin = d.tobaccoOrigin || d.tobacco_origin || d.origin || d.Source || "";
-        const dest = d.destination || d.Destination || d.Target || "";
-        
-        // Material Keys
-        const tKG = Number(d.tobacco || d.Tobacco || 0);
-        const pKG = Number(d.paper || d.Paper || 0);
-        const fKG = Number(d.filter || d.Filter || 0);
-        const outKG = Number(d.outflow || d.Outflow || d.sticks || 0);
+    return actualArray.map((d, index) => {
+      // UNIVERSAL KEY PICKER: Tries multiple naming conventions
+      const getVal = (paths) => {
+        const found = paths.find(p => d[p] !== undefined && d[p] !== null);
+        return found !== undefined ? d[found] : null;
+      };
 
-        const tobaccoSticks = tKG / KG_PER_STICK;
-        const cigSticks = outKG > 1000 ? outKG : outKG / KG_PER_STICK; // Handle if input is already sticks
+      const tOrigin = getVal(['tobaccoOrigin', 'Tobacco Origin', 'origin', 'Source', 'From']);
+      const dest = getVal(['destination', 'Destination', 'Target', 'To']);
+      const outVal = Number(getVal(['outflow', 'Outflow', 'sticks', 'Sticks', 'Total_Production']) || 0);
+      const tKG = Number(getVal(['tobacco', 'Tobacco', 'tobacco_kg', 'Input_KG']) || 0);
 
-        return {
-          ...d,
-          id: index + 1,
-          tobaccoOrigin: tOrigin.toString().trim() || "Missing Origin",
-          destination: dest.toString().trim() || "Missing Destination",
-          tobaccoSticks,
-          paperSticks: (Number(d.paper || 0)) / KG_PER_STICK,
-          filterSticks: (Number(d.filter || 0)) / KG_PER_STICK,
-          towSticks: (Number(d.tow || 0)) / KG_PER_STICK,
-          cigSticks,
-          capacity: tobaccoSticks, // Simplified for diagnostic
-          gap: cigSticks - tobaccoSticks
-        };
-      })
-      .filter(d => {
-          // Only show rows that have both a start and an end point
-          const isValid = d.tobaccoOrigin !== "Missing Origin" && d.destination !== "Missing Destination";
-          if (!isValid) console.warn(`Row ${d.id} filtered out: Missing origin or destination.`);
-          return isValid;
-      });
+      const tobaccoSticks = tKG / KG_PER_STICK;
+      
+      return {
+        ...d,
+        id: index + 1,
+        tobaccoOrigin: tOrigin ? String(tOrigin).trim() : null,
+        destination: dest ? String(dest).trim() : null,
+        tobaccoSticks: tobaccoSticks,
+        cigSticks: outVal,
+        gap: outVal - tobaccoSticks
+      };
+    }).filter(row => {
+      // Only keep the row if it has a valid source AND destination
+      const hasPath = row.tobaccoOrigin && row.destination;
+      if (!hasPath) {
+        console.warn(`Row ${row.id} hidden: Missing 'origin' or 'destination' keys. Check column names.`);
+      }
+      return hasPath;
+    });
   }, [data]);
 
   // 2. SANKEY DATA + VALIDATION (LOOP-PROOF)
