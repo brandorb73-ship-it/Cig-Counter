@@ -4,19 +4,12 @@ import React, { useMemo } from "react";
 import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
 
 // ---------- HELPERS ----------
-
-const parseNum = (v) => {
-  if (!v) return 0;
-  return Number(String(v).replace(/,/g, ""));
-};
-
+const parseNum = (v) => (v ? Number(String(v).replace(/,/g, "")) : 0);
 const KG_TO_STICKS = 1 / 0.0007; // 1kg ≈ 1428 sticks
 const YIELD = 0.95;
-
 const toSticks = (kg) => (kg > 0 ? kg * KG_TO_STICKS : 0);
 
 // ---------- TOOLTIP ----------
-
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
@@ -27,31 +20,52 @@ const CustomTooltip = ({ active, payload }) => {
 
   return (
     <div className="bg-black p-4 border border-gray-700 rounded text-xs">
-      <div className="font-bold text-white mb-1">
-        {d.sourceName} → {d.targetName}
-      </div>
+      <div className="font-bold text-white mb-1">{d.sourceName} → {d.targetName}</div>
       <div>Precursor Capacity: {Math.round(d.precursorSticks).toLocaleString()} sticks</div>
       <div>Actual Output: {Math.round(d.exportSticks).toLocaleString()} sticks</div>
       <div className={`mt-2 font-bold ${gap > 0 ? "text-red-400" : "text-green-400"}`}>
-        {gap > 0
-          ? `GAP: ${gap.toLocaleString()} | TAX LOSS: $${taxLoss.toLocaleString()}`
-          : "BALANCED FLOW"}
+        {gap > 0 ? `GAP: ${gap.toLocaleString()} | TAX LOSS: $${taxLoss.toLocaleString()}` : "BALANCED FLOW"}
       </div>
     </div>
   );
 };
 
 // ---------- MAIN COMPONENT ----------
-
 export default function InvestigationSankey({ rawData }) {
-  // Safe handling
-  if (!rawData || !Array.isArray(rawData) || rawData.length === 0) {
-    return <div className="text-slate-500 p-4">Loading forensic data...</div>;
-  }
+  // ----------- DATA LEDGER DEFAULT ----------
+  const defaultLedger = [
+    {
+      Entity: "T********** INC",
+      Tobacco: "173,250",
+      "Tobacco Origin": "BRAZIL",
+      Paper: "0",
+      "Paper Origin": "",
+      Filter: "0",
+      "Filter Origin": "",
+      Tow: "0",
+      "Tow Origin": "",
+      "Cigarette Exports": "171,072",
+      Destination: "SINGAPORE"
+    },
+    {
+      Entity: "T********** INC",
+      Tobacco: "39,600",
+      "Tobacco Origin": "BRAZIL",
+      Paper: "90,312",
+      "Paper Origin": "VIETNAM",
+      Filter: "0",
+      "Filter Origin": "",
+      Tow: "63,686",
+      "Tow Origin": "",
+      "Cigarette Exports": "63,686",
+      Destination: "SINGAPORE"
+    }
+  ];
 
-  // ---------- PREPROCESS DATA ----------
+  const ledger = rawData && rawData.length ? rawData : defaultLedger;
+
   const { sankeyData, summary } = useMemo(() => {
-    const clean = rawData
+    const clean = ledger
       .filter(d => d && Object.values(d).some(v => v))
       .map(d => ({
         hub: d.Entity || "Unknown Hub",
@@ -60,13 +74,11 @@ export default function InvestigationSankey({ rawData }) {
         filterKG: parseNum(d.Filter),
         towKG: parseNum(d.Tow),
         cigKG: parseNum(d["Cigarette Exports"] || d.outflow),
-
         tobaccoOrigin: d["Tobacco Origin"] || "Unknown",
         paperOrigin: d["Paper Origin"] || "Unknown",
         filterOrigin: d["Filter Origin"] || "Unknown",
         towOrigin: d["Tow Origin"] || "Unknown",
-
-        destination: d.Destination || "Unknown",
+        destination: d.Destination || "Unknown"
       }));
 
     const nodes = [];
@@ -81,30 +93,22 @@ export default function InvestigationSankey({ rawData }) {
       return nodeMap.get(name);
     };
 
-    // ---------- BUILD FLOWS ----------
     clean.forEach(d => {
       const hub = d.hub;
       const dest = d.destination;
 
-      const precursorSticks =
-        (toSticks(d.tobaccoKG + d.paperKG + d.filterKG + d.towKG)) * YIELD;
+      const precursorSticks = (toSticks(d.tobaccoKG + d.paperKG + d.filterKG + d.towKG)) * YIELD;
       const exportSticks = toSticks(d.cigKG);
 
       const key = `${hub}-${dest}`;
       if (!linksMap.has(key)) {
-        linksMap.set(key, {
-          sourceName: hub,
-          targetName: dest,
-          precursorSticks: 0,
-          exportSticks: 0
-        });
+        linksMap.set(key, { sourceName: hub, targetName: dest, precursorSticks: 0, exportSticks: 0 });
       }
       const l = linksMap.get(key);
       l.precursorSticks += precursorSticks;
       l.exportSticks += exportSticks;
     });
 
-    // ---------- FINAL LINKS ----------
     const links = [];
     let totalGap = 0;
     let topCorridor = null;
@@ -117,7 +121,6 @@ export default function InvestigationSankey({ rawData }) {
         maxGap = gap;
         topCorridor = `${l.sourceName} → ${l.targetName}`;
       }
-
       let color = "#22c55e"; // green
       if (gap > 1_000_000) color = "#ef4444"; // red
       else if (gap > 100_000) color = "#f97316"; // orange
@@ -141,36 +144,25 @@ export default function InvestigationSankey({ rawData }) {
         totalPrecursors: links.reduce((sum, l) => sum + l.precursorSticks, 0),
         totalGap,
         topCorridor,
-        severity:
-          totalGap > 1_000_000
-            ? "CRITICAL"
-            : totalGap > 100_000
-            ? "HIGH"
-            : totalGap > 0
-            ? "MEDIUM"
-            : "LOW",
-        riskType:
-          links.every(l => l.exportSticks <= l.precursorSticks)
-            ? "BALANCED"
-            : links.some(l => l.exportSticks > l.precursorSticks * 1.2)
-            ? "UNDER_DECLARATION"
-            : links.some(l => l.exportSticks < l.precursorSticks * 0.8)
-            ? "STOCKPILING"
-            : "DIVERSION",
-      },
+        severity: totalGap > 1_000_000 ? "CRITICAL" : totalGap > 100_000 ? "HIGH" : totalGap > 0 ? "MEDIUM" : "LOW",
+        riskType: links.every(l => l.exportSticks <= l.precursorSticks)
+          ? "BALANCED"
+          : links.some(l => l.exportSticks > l.precursorSticks * 1.2)
+          ? "UNDER_DECLARATION"
+          : links.some(l => l.exportSticks < l.precursorSticks * 0.8)
+          ? "STOCKPILING"
+          : "DIVERSION"
+      }
     };
-  }, [rawData]);
+  }, [ledger]);
 
   if (!sankeyData.nodes.length || !sankeyData.links.length) {
     return <div className="text-red-400 p-4">⚠️ No valid Sankey data — check CSV</div>;
   }
 
-  // ---------- RENDER ----------
   return (
     <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-      <h3 className="text-sm text-white mb-2 font-bold">
-        Investigation Flow: Origin → Hub → Destination
-      </h3>
+      <h3 className="text-sm text-white mb-2 font-bold">Investigation Flow: Origin → Hub → Destination</h3>
 
       <ResponsiveContainer width="100%" height={500}>
         <Sankey
