@@ -1,192 +1,194 @@
+"use client";
+
 import React, { useMemo } from "react";
-import {
-  Sankey,
-  Tooltip,
-  ResponsiveContainer
-} from "recharts";
+import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
 
-// ---------- HELPERS ----------
+/* =========================
+   HELPERS
+========================= */
 
-// Fix comma numbers like "173,250.00"
+// Fix "173,250.00"
 const parseNum = (v) => {
   if (!v) return 0;
   return Number(String(v).replace(/,/g, ""));
 };
 
-const KG_TO_STICKS = 1000;
+const KG_TO_STICKS = 1 / 0.0007;
+const YIELD = 0.95;
 
-// Convert KG → sticks
-const toSticks = (kg) => {
-  if (!kg || isNaN(kg)) return 0;
-  return kg * KG_TO_STICKS;
-};
+const toSticks = (kg) => (kg > 0 ? kg * KG_TO_STICKS : 0);
 
-// ---------- TOOLTIP ----------
+/* =========================
+   TOOLTIP (FORENSIC)
+========================= */
 
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
 
-  const data = payload[0]?.payload;
+  const d = payload[0].payload;
+  if (!d) return null;
 
-  if (!data) return null;
-
-  const sticks = Math.round(data.value);
-  const kg = Math.round(data.value / KG_TO_STICKS);
+  const gap = Math.round(d.exportSticks - d.precursorSticks);
+  const taxLoss = gap > 0 ? gap * 0.15 : 0;
 
   return (
-    <div className="bg-black p-3 border border-gray-700 rounded text-xs">
-      <div><strong>Flow:</strong> {data.source?.name} → {data.target?.name}</div>
-      <div>Sticks: {sticks.toLocaleString()}</div>
-      <div>KG: {kg.toLocaleString()}</div>
+    <div className="bg-black p-4 border border-gray-700 rounded text-xs">
+      <div className="font-bold text-white mb-1">
+        {d.sourceName} → {d.targetName}
+      </div>
+
+      <div>Precursor Capacity: {Math.round(d.precursorSticks).toLocaleString()} sticks</div>
+      <div>Actual Output: {Math.round(d.exportSticks).toLocaleString()} sticks</div>
+
+      <div className={`mt-2 font-bold ${gap > 0 ? "text-red-400" : "text-green-400"}`}>
+        {gap > 0
+          ? `GAP: ${gap.toLocaleString()} | TAX LOSS: $${taxLoss.toLocaleString()}`
+          : "BALANCED FLOW"}
+      </div>
     </div>
   );
 };
-if (!rawData || !Array.isArray(rawData)) {
-  return (
-    <div className="text-slate-500 p-4">
-      Loading forensic data...
-    </div>
-  );
-}
-// ---------- MAIN COMPONENT ----------
+
+/* =========================
+   MAIN COMPONENT
+========================= */
 
 export default function ForensicSankey({ rawData }) {
 
   const sankeyData = useMemo(() => {
 
-    // ---------- CLEAN DATA ----------
     const safeData = Array.isArray(rawData) ? rawData : [];
 
-const cleanData = safeData.map((d, i) => ({
-      id: i,
-      hub: d.Entity || "Unknown Hub",
+    const clean = safeData
+      .filter(d => d && Object.keys(d).length > 0)
+      .map(d => ({
+        hub: d.Entity || "Unknown Hub",
 
-      tobaccoKG: parseNum(d.Tobacco),
-      paperKG: parseNum(d.Paper),
-      filterKG: parseNum(d.Filter),
-      towKG: parseNum(d.Tow),
-      cigKG: parseNum(
-  d["Cigarette Exports"] ||
-  d["Cigarette Exports "] || 
-  d.cigaretteExports ||
-  d.outflow
-),
+        tobaccoKG: parseNum(d.Tobacco),
+        paperKG: parseNum(d.Paper),
+        filterKG: parseNum(d.Filter),
+        towKG: parseNum(d.Tow),
 
-      tobaccoOrigin: d["Tobacco Origin"] || "Unknown",
-      paperOrigin: d["Paper Origin"] || "Unknown",
-      filterOrigin: d["Filter Origin"] || "Unknown",
-      towOrigin: d["Tow Origin"] || "Unknown",
+        cigKG: parseNum(
+          d["Cigarette Exports"] ||
+          d["Cigarette Exports "] ||
+          d.outflow
+        ),
 
-      destination: d.Destination || "Unknown"
-    }));
+        tobaccoOrigin: d["Tobacco Origin"] || "Unknown",
+        paperOrigin: d["Paper Origin"] || "Unknown",
+        filterOrigin: d["Filter Origin"] || "Unknown",
+        towOrigin: d["Tow Origin"] || "Unknown",
 
-    console.log("✅ Clean Data:", cleanData);
-
-    // ---------- BUILD LINKS ----------
-    const links = [];
-
-    cleanData.forEach(d => {
-
-      const hub = d.hub;
-
-      // Tobacco → Hub (PRIMARY DRIVER)
-      const tobaccoSticks = toSticks(d.tobaccoKG);
-
-      if (tobaccoSticks > 0) {
-        links.push({
-          source: d.tobaccoOrigin,
-          target: hub,
-          value: tobaccoSticks,
-          type: "input"
-        });
-      }
-
-      // Optional precursors (only if present)
-      const extras = [
-        { origin: d.paperOrigin, kg: d.paperKG },
-        { origin: d.filterOrigin, kg: d.filterKG },
-        { origin: d.towOrigin, kg: d.towKG }
-      ];
-
-      extras.forEach(e => {
-        const val = toSticks(e.kg);
-        if (val > 0 && e.origin !== "Unknown") {
-          links.push({
-            source: e.origin,
-            target: hub,
-            value: val,
-            type: "input"
-          });
-        }
-      });
-
-      // Hub → Destination
-      const output = toSticks(d.cigKG);
-
-      if (output > 0) {
-        links.push({
-          source: hub,
-          target: d.destination,
-          value: output,
-          type: "output"
-        });
-      }
-    });
-
-    console.log("✅ Raw Links:", links);
-
-    // ---------- BUILD NODES ----------
-    const nodeSet = new Set();
-
-    links.forEach(l => {
-      nodeSet.add(l.source);
-      nodeSet.add(l.target);
-    });
-
-    const nodes = Array.from(nodeSet).map(name => ({ name }));
-
-    const nodeIndex = new Map(nodes.map((n, i) => [n.name, i]));
-
-    // ---------- SAFE LINKS ----------
-    const finalLinks = links
-      .filter(l => nodeIndex.has(l.source) && nodeIndex.has(l.target))
-      .map(l => ({
-        source: nodeIndex.get(l.source),
-        target: nodeIndex.get(l.target),
-        value: l.value
+        destination: d.Destination || "Unknown"
       }));
 
-    console.log("✅ Final Links:", finalLinks);
-    console.log("✅ Nodes:", nodes);
+    const nodes = [];
+    const nodeMap = new Map();
+    const linksMap = new Map();
 
-    return {
-      nodes,
-      links: finalLinks
+    const getNode = (name) => {
+      if (!nodeMap.has(name)) {
+        nodeMap.set(name, nodes.length);
+        nodes.push({ name });
+      }
+      return nodeMap.get(name);
     };
+
+    /* =========================
+       BUILD FLOWS
+    ========================= */
+
+    clean.forEach(d => {
+
+      const hub = d.hub;
+      const dest = d.destination;
+
+      const precursorKG =
+        d.tobaccoKG + d.paperKG + d.filterKG + d.towKG;
+
+      const precursorSticks = toSticks(precursorKG) * YIELD;
+      const exportSticks = toSticks(d.cigKG);
+
+      const key = `${hub}-${dest}`;
+
+      if (!linksMap.has(key)) {
+        linksMap.set(key, {
+          sourceName: hub,
+          targetName: dest,
+          precursorSticks: 0,
+          exportSticks: 0
+        });
+      }
+
+      const l = linksMap.get(key);
+      l.precursorSticks += precursorSticks;
+      l.exportSticks += exportSticks;
+    });
+
+    /* =========================
+       BUILD FINAL LINKS
+    ========================= */
+
+    const links = [];
+
+    linksMap.forEach(l => {
+
+      const gap = l.exportSticks - l.precursorSticks;
+
+      let color = "#22c55e"; // green
+      if (gap > 1_000_000) color = "#ef4444"; // red
+      else if (gap > 100_000) color = "#f97316"; // orange
+
+      links.push({
+        source: getNode(l.sourceName),
+        target: getNode(l.targetName),
+        value: Math.max(l.exportSticks, 1),
+
+        sourceName: l.sourceName,
+        targetName: l.targetName,
+        precursorSticks: l.precursorSticks,
+        exportSticks: l.exportSticks,
+
+        stroke: color
+      });
+    });
+
+    return { nodes, links };
 
   }, [rawData]);
 
-  // ---------- EMPTY STATE ----------
+  /* =========================
+     SAFE RENDER
+  ========================= */
+
+  if (!rawData || !Array.isArray(rawData)) {
+    return <div className="text-slate-500 p-4">Loading data...</div>;
+  }
+
   if (!sankeyData.nodes.length || !sankeyData.links.length) {
     return (
       <div className="text-red-400 p-4">
-        ⚠️ No valid Sankey data — check CSV mapping / parsing
+        ⚠️ No valid Sankey data — check CSV
       </div>
     );
   }
 
-  // ---------- RENDER ----------
+  /* =========================
+     RENDER
+  ========================= */
+
   return (
     <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
       <h3 className="text-sm text-white mb-2 font-bold">
-        Forensic Flow (Origin → Entity → Destination)
+        Investigation Flow: Origin → Hub → Destination
       </h3>
 
       <ResponsiveContainer width="100%" height={500}>
         <Sankey
           data={sankeyData}
-          nodePadding={20}
-          margin={{ top: 20, right: 50, bottom: 20, left: 50 }}
+          nodePadding={25}
+          link={{ strokeOpacity: 0.4 }}
         >
           <Tooltip content={<CustomTooltip />} />
         </Sankey>
