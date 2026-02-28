@@ -110,69 +110,50 @@ export default function SankeyFlow({ processedData }) {
 
     /* ========= CORE LOOP ========= */
     const sankeyData = useMemo(() => {
-    const rawFlows = [];
+  const nodes = [];
+  const nodeMap = new Map();
+  const links = [];
 
-    cleanData.forEach(d => {
-      // Define all potential input paths
-      const paths = [
-        { source: d.tobaccoOrigin, value: d.tobaccoSticks },
-        { source: d.paperOrigin, value: d.paperSticks },
-        { source: d.filterOrigin, value: d.filterSticks },
-        { source: d.towOrigin, value: d.towSticks }
-      ];
-
-      paths.forEach(p => {
-        // 1. CRITICAL: Prevent circular loops (Source cannot be the same as Target)
-        // 2. Ensure value is a positive number
-        if (p.source && d.destination && p.source !== d.destination && p.value > 0) {
-          rawFlows.push({ 
-            source: p.source, 
-            target: d.destination, 
-            value: p.value 
-          });
-        }
-      });
-    });
-
-    // 3. Aggregate links to prevent duplicate source->target pairs (better performance)
-    const aggregatedLinks = {};
-    rawFlows.forEach(f => {
-      const key = `${f.source}→${f.target}`;
-      if (!aggregatedLinks[key]) {
-        aggregatedLinks[key] = { ...f };
-      } else {
-        aggregatedLinks[key].value += f.value;
-      }
-    });
-
-    const flows = Object.values(aggregatedLinks);
-    const nodes = [];
-    const nodeMap = {};
-
-    flows.forEach(f => {
-      if (nodeMap[f.source] === undefined) {
-        nodeMap[f.source] = nodes.length;
-        nodes.push({ name: f.source });
-      }
-      if (nodeMap[f.target] === undefined) {
-        nodeMap[f.target] = nodes.length;
-        nodes.push({ name: f.target });
-      }
-    });
-
-    const links = flows.map(f => ({
-      source: nodeMap[f.source],
-      target: nodeMap[f.target],
-      value: f.value
-    }));
-
-    // FINAL CHECK: Recharts fails if nodes or links are empty
-    if (nodes.length === 0 || links.length === 0) {
-        return { nodes: [{ name: "No Data" }], links: [] };
+  // 1. Helper to safely add nodes
+  const addNode = (name) => {
+    if (!nodeMap.has(name)) {
+      nodeMap.set(name, nodes.length);
+      nodes.push({ name });
     }
+    return nodeMap.get(name);
+  };
 
-    return { nodes, links };
-  }, [cleanData]);
+  // 2. Process and Filter
+  cleanData.forEach(d => {
+    const rawPaths = [
+      { s: d.tobaccoOrigin, v: d.tobaccoSticks },
+      { s: d.paperOrigin, v: d.paperSticks },
+      { s: d.filterOrigin, v: d.filterSticks },
+      { s: d.towOrigin, v: d.towSticks }
+    ];
+
+    rawPaths.forEach(({ s, v }) => {
+      // CRITICAL FILTERS:
+      // - v > 0: Sankey crashes on 0 or negative values
+      // - s !== d.destination: Sankey crashes on self-loops (A -> A)
+      if (s && d.destination && s !== d.destination && v > 0) {
+        links.push({
+          source: addNode(s),
+          target: addNode(d.destination),
+          value: v
+        });
+      }
+    });
+  });
+
+  // 3. Final safety check: If no valid links exist, return a dummy state 
+  // to prevent Recharts from trying to render an empty graph.
+  if (nodes.length === 0 || links.length === 0) {
+    return { nodes: [{ name: "No Data" }], links: [] };
+  }
+
+  return { nodes, links };
+}, [cleanData]);
 
     /* ========= FORENSIC TOTALS ========= */
     const totalPrecursorSticks = links.reduce((a, b) => a + b.precursorSticks, 0) / 2;
