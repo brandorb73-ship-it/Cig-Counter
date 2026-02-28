@@ -93,7 +93,18 @@ export default function SankeyFlow({ processedData }) {
       // UNIT CONVERSION
       // If inflow/outflow is in KG, convert to sticks (1kg = 1000 sticks approx)
       const tobaccoKG = Number(d.tobacco) || Number(d.Tobacco) || 0;
-      const actualSticks = (Number(d.outflow) || Number(d.Outflow) || 0) * 1000; 
+      const unit = (d.unit || d.Unit || "").toLowerCase();
+const rawOutflow = Number(d.outflow) || Number(d.Outflow) || 0;
+
+let actualSticks = 0;
+
+// If already KG → convert using same mass logic
+if (unit === "kg") {
+  actualSticks = (rawOutflow * 0.95) / 0.0007;
+} else {
+  // assume it's already sticks
+  actualSticks = rawOutflow;
+}
 
       // Visual scaling for the chart
       const scaledValue = Math.log10(actualSticks + 1) * 1000;
@@ -137,7 +148,7 @@ export default function SankeyFlow({ processedData }) {
       summary: {
         hub: processedData[0]?.entity || processedData[0]?.Entity || "Main Hub",
         totalSticks: totalActualSticks,
-        taxLoss: estTotalTaxLoss,
+        taxLoss: estTaxLoss,
         capacity: capacity
       },
     };
