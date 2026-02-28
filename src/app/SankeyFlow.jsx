@@ -109,51 +109,56 @@ export default function SankeyFlow({ processedData }) {
     };
 
     /* ========= CORE LOOP ========= */
-    const sankeyData = useMemo(() => {
-  const nodes = [];
-  const nodeMap = new Map();
-  const links = [];
+ const { sankeyData, validationErrors } = useMemo(() => {
+    const nodes = [];
+    const nodeMap = new Map();
+    const links = [];
+    const errors = [];
 
-  // 1. Helper to safely add nodes
-  const addNode = (name) => {
-    if (!nodeMap.has(name)) {
-      nodeMap.set(name, nodes.length);
-      nodes.push({ name });
-    }
-    return nodeMap.get(name);
-  };
+    const addNode = (name) => {
+      if (!nodeMap.has(name)) {
+        nodeMap.set(name, nodes.length);
+        nodes.push({ name });
+      }
+      return nodeMap.get(name);
+    };
 
-  // 2. Process and Filter
-  cleanData.forEach(d => {
-    const rawPaths = [
-      { s: d.tobaccoOrigin, v: d.tobaccoSticks },
-      { s: d.paperOrigin, v: d.paperSticks },
-      { s: d.filterOrigin, v: d.filterSticks },
-      { s: d.towOrigin, v: d.towSticks }
-    ];
+    cleanData.forEach((d, index) => {
+      const inputs = [
+        { label: "Tobacco", s: d.tobaccoOrigin, v: d.tobaccoSticks },
+        { label: "Paper", s: d.paperOrigin, v: d.paperSticks },
+        { label: "Filter", s: d.filterOrigin, v: d.filterSticks },
+        { label: "Tow", s: d.towOrigin, v: d.towSticks }
+      ];
 
-    rawPaths.forEach(({ s, v }) => {
-      // CRITICAL FILTERS:
-      // - v > 0: Sankey crashes on 0 or negative values
-      // - s !== d.destination: Sankey crashes on self-loops (A -> A)
-      if (s && d.destination && s !== d.destination && v > 0) {
+      inputs.forEach(({ label, s, v }) => {
+        // Validation Checks
+        if (!s || !d.destination) return; // Skip empty fields
+
+        if (s === d.destination) {
+          errors.push(`Row ${index + 1}: Circular Loop found (${s} -> ${d.destination}). Sankey cannot map a node to itself.`);
+          return;
+        }
+
+        if (v <= 0) {
+          // We don't necessarily error on 0, but we must skip it for Recharts
+          return;
+        }
+
         links.push({
           source: addNode(s),
           target: addNode(d.destination),
-          value: v
+          value: v,
+          type: label // Adding this for custom coloring later
         });
-      }
+      });
     });
-  });
 
-  // 3. Final safety check: If no valid links exist, return a dummy state 
-  // to prevent Recharts from trying to render an empty graph.
-  if (nodes.length === 0 || links.length === 0) {
-    return { nodes: [{ name: "No Data" }], links: [] };
-  }
-
-  return { nodes, links };
-}, [cleanData]);
+    return { 
+      sankeyData: { nodes, links }, 
+      validationErrors: errors 
+    };
+  }, [cleanData]);
 
     /* ========= FORENSIC TOTALS ========= */
     const totalPrecursorSticks = links.reduce((a, b) => a + b.precursorSticks, 0) / 2;
