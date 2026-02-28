@@ -1,235 +1,217 @@
 import React, { useMemo } from "react";
-import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
+import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-export default function ChartDashboard({ data }) {
+/* =========================
+   NODE RENDERER
+========================= */
+const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
+  if (x === undefined || isNaN(x)) return null;
+  const isOut = x > containerWidth / 2;
+  return (
+    <Layer key={`node-${index}`}>
+      <Rectangle x={x} y={y} width={width} height={height} fill="#38bdf8" fillOpacity={0.9} rx={2} />
+      <text
+        x={isOut ? x - 10 : x + width + 10}
+        y={y + height / 2}
+        textAnchor={isOut ? "end" : "start"}
+        fontSize={10}
+        fontWeight={800}
+        fill="#fff"
+        dominantBaseline="middle"
+      >
+        {payload.name}
+      </text>
+    </Layer>
+  );
+};
 
-  // -----------------------------
-  // 1. CLEAN + NORMALIZE DATA
-  // -----------------------------
-
-  const cleanData = useMemo(() => {
-    if (!data) return [];
-
-    const KG_PER_STICK = 0.0007;
-
-    const norm = (v) => (v && v.toString().trim() !== "" ? v : "Unknown");
-
-    return data
-      .filter(d => d && Object.values(d).some(v => v !== "" && v != null))
-      .map((d) => {
-
-        const tobaccoKG = Number(d.tobacco || d.Tobacco || 0);
-        const paperKG = Number(d.paper || d.Paper || 0);
-        const filterKG = Number(d.filter || d.Filter || 0);
-        const towKG = Number(d.tow || d.Tow || 0);
-        const cigKG = Number(d.outflow || d.Outflow || 0);
-
-        const tobaccoSticks = tobaccoKG / KG_PER_STICK;
-        const paperSticks = paperKG / KG_PER_STICK;
-        const filterSticks = filterKG / KG_PER_STICK;
-        const towSticks = towKG / KG_PER_STICK;
-        const cigSticks = cigKG / KG_PER_STICK;
-
-        const capacity = Math.min(
-          tobaccoSticks || Infinity,
-          paperSticks || Infinity,
-          filterSticks || Infinity,
-          towSticks || Infinity
-        );
-
-        const gap = cigSticks - capacity;
-
-        return {
-          ...d,
-          tobaccoOrigin: norm(d.tobaccoOrigin),
-          paperOrigin: norm(d.paperOrigin),
-          filterOrigin: norm(d.filterOrigin),
-          towOrigin: norm(d.towOrigin),
-          destination: norm(d.destination),
-
-          tobaccoSticks,
-          paperSticks,
-          filterSticks,
-          towSticks,
-          cigSticks,
-          capacity,
-          gap
-        };
-      });
-  }, [data]);
-
-  // -----------------------------
-  // 2. ADVANCED FORENSIC SUMMARY
-  // -----------------------------
-
-  const summary = useMemo(() => {
-    if (!cleanData.length) return null;
-
-    const totalSticks = cleanData.reduce((sum, d) => sum + d.cigSticks, 0);
-    const totalCapacity = cleanData.reduce((sum, d) => sum + (d.capacity || 0), 0);
-    const totalGap = totalSticks - totalCapacity;
-
-    const TAX_PER_1000 = 350;
-    const taxLoss = (totalGap / 1000) * TAX_PER_1000;
-
-    // Corridor intelligence
-    const corridorMap = {};
-    cleanData.forEach(d => {
-      const key = `${d.tobaccoOrigin} → ${d.destination}`;
-      corridorMap[key] = (corridorMap[key] || 0) + d.cigSticks;
-    });
-
-    const topCorridor = Object.entries(corridorMap)
-      .sort((a, b) => b[1] - a[1])[0];
-
-    // Risk classification logic
-    let riskType = "Balanced";
-
-    if (totalGap > totalCapacity * 0.3) {
-      riskType = "Illicit Production / Under-declaration";
-    } else if (totalGap > 0) {
-      riskType = "Stockpiling / Timing Lag";
-    } else if (totalGap < 0) {
-      riskType = "Over-declared Inputs";
-    }
-
-    const riskGrade =
-      taxLoss > 1_000_000 ? "Severe" :
-      taxLoss > 250_000 ? "High" :
-      taxLoss > 50_000 ? "Moderate" : "Low";
-
-    return {
-      hub: cleanData[0]?.destination,
-      totalSticks,
-      capacity: totalCapacity,
-      gap: totalGap,
-      taxLoss,
-      riskType,
-      riskGrade,
-      topCorridor: topCorridor?.[0]
-    };
-
-  }, [cleanData]);
-
-  // -----------------------------
-  // 3. SANKEY DATA (FULL FLOW)
-  // -----------------------------
-
-  const sankeyData = useMemo(() => {
-    const flows = [];
-
-    cleanData.forEach(d => {
-      if (d.tobaccoOrigin && d.destination)
-        flows.push({ source: d.tobaccoOrigin, target: d.destination, value: d.tobaccoSticks });
-
-      if (d.paperOrigin && d.destination)
-        flows.push({ source: d.paperOrigin, target: d.destination, value: d.paperSticks });
-
-      if (d.filterOrigin && d.destination)
-        flows.push({ source: d.filterOrigin, target: d.destination, value: d.filterSticks });
-
-      if (d.towOrigin && d.destination)
-        flows.push({ source: d.towOrigin, target: d.destination, value: d.towSticks });
-    });
-
-    const nodes = [];
-    const nodeMap = {};
-
-    flows.forEach(f => {
-      if (!nodeMap[f.source]) {
-        nodeMap[f.source] = nodes.length;
-        nodes.push({ name: f.source });
-      }
-      if (!nodeMap[f.target]) {
-        nodeMap[f.target] = nodes.length;
-        nodes.push({ name: f.target });
-      }
-    });
-
-    const links = flows.map(f => ({
-      source: nodeMap[f.source],
-      target: nodeMap[f.target],
-      value: f.value
-    }));
-
-    return { nodes, links };
-
-  }, [cleanData]);
-
-  // -----------------------------
-  // 4. TOOLTIP (FORENSIC HOVER)
-  // -----------------------------
-
-  const SankeyTooltip = ({ payload }) => {
-    if (!payload || !payload.length) return null;
-
-    const d = payload[0].payload;
-
-    return (
-      <div className="bg-black p-3 text-xs border border-gray-700">
-        <div className="text-white">
-          {d.source.name} → {d.target.name}
-        </div>
-        <div>Sticks: {Math.round(d.value).toLocaleString()}</div>
-        <div>KG: {(d.value * 0.0007).toFixed(2)}</div>
-      </div>
-    );
-  };
-
-  // -----------------------------
-  // 5. RENDER
-  // -----------------------------
+/* =========================
+   TOOLTIP
+========================= */
+const AuditTooltip = ({ payload }) => {
+  if (!payload || !payload.length) return null;
+  const d = payload[0].payload;
+  if (!d) return null;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl text-[11px] shadow-2xl">
+      <div className="text-emerald-400 font-black mb-2 uppercase italic">Mass Balance Audit</div>
+      <div className="font-bold text-white mb-2 border-b border-slate-800 pb-1">{d.sourceName} → {d.targetName}</div>
+      <div className="space-y-1">
+        <div className="flex justify-between gap-4"><span>Sticks:</span><span className="text-white">{Math.round(d.value).toLocaleString()}</span></div>
+        <div className="flex justify-between gap-4"><span>KG:</span><span className="text-blue-400">{(d.value * 0.0007).toFixed(2)}</span></div>
+      </div>
+    </div>
+  );
+};
 
-      {/* SUMMARY */}
-      {summary && (
-        <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+/* =========================
+   MAIN COMPONENT
+========================= */
+export default function SankeyFlow({ processedData }) {
+  const { sankeyData, summary, riskFlags } = useMemo(() => {
+    if (!processedData || processedData.length === 0) {
+      return { sankeyData: { nodes: [], links: [] }, summary: null, riskFlags: [] };
+    }
 
-          <div className="text-sm">
-            <strong className="text-blue-400">AI Forensic Summary:</strong>
+    const KG_TO_STICKS = 1 / 0.0007;
+    const YIELD = 0.95;
 
-            <span className="text-white ml-2">
-              {summary.gap > 0 ? "🔴 Risk Detected" : "🟢 Balanced"}
-            </span>
+    const nodes = [];
+    const nodeMap = new Map();
+    const linkMap = new Map();
 
-            <div className="mt-2">
-              Hub <strong className="text-white">{summary.hub}</strong> processed
-              <strong className="text-white"> {Math.round(summary.totalSticks).toLocaleString()} sticks</strong>.
-            </div>
+    const addNode = (name, layer) => {
+      const safeName = (name || "Unknown").toString().trim();
+      if (!safeName) return null;
+      const key = `${safeName}-L${layer}`;
+      if (!nodeMap.has(key)) {
+        const id = nodes.length;
+        nodes.push({ name: safeName, layer });
+        nodeMap.set(key, id);
+        return id;
+      }
+      return nodeMap.get(key);
+    };
 
-            <div className="mt-1 text-gray-300">
-              {summary.riskType}
-            </div>
+    let totalCapacity = 0;
+    let totalOutput = 0;
 
-            <div className="mt-1">
-              📊 Corridor: <strong className="text-yellow-400">{summary.topCorridor}</strong>
-            </div>
+    processedData.forEach(d => {
+      if (!d || Object.values(d).every(v => !v)) return;
 
-            <div className="mt-1">
-              💰 Tax Exposure:
-              <strong className="text-red-400"> ${Math.round(summary.taxLoss).toLocaleString()}</strong>
-              <span className="ml-2 text-xs text-gray-400">({summary.riskGrade})</span>
-            </div>
+      const origin = d.origin || d.Origin || "Unknown";
+      const entity = d.entity || d.Entity || "Production Hub";
+      const dest = d.dest || d.Dest || d.Destination || "Unknown Market";
 
-          </div>
-        </div>
-      )}
+      const tobaccoKG = Number(d.tobacco || d.Tobacco || 0);
+      const paperKG = Number(d.paper || d.Paper || 0);
+      const filterKG = Number(d.filter || d.Filter || 0);
+      const towKG = Number(d.tow || d.Tow || 0);
+      const cigKG = Number(d.outflow || d.Outflow || 0);
 
-      {/* SANKEY */}
-      <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 h-[500px]">
+      const tobaccoSticks = tobaccoKG * YIELD * KG_TO_STICKS;
+      const paperSticks = paperKG * YIELD * KG_TO_STICKS;
+      const filterSticks = filterKG * YIELD * KG_TO_STICKS;
+      const towSticks = towKG * YIELD * KG_TO_STICKS;
+      const cigSticks = cigKG * KG_TO_STICKS;
+
+      const capacity = Math.min(tobaccoSticks || Infinity, paperSticks || Infinity, filterSticks || Infinity, towSticks || Infinity);
+
+      totalCapacity += isFinite(capacity) ? capacity : 0;
+      totalOutput += cigSticks;
+
+      const s = addNode(origin, 0);
+      const e = addNode(entity, 1);
+      const t = addNode(dest, 2);
+      if (s === null || e === null || t === null) return;
+
+      const key1 = `${s}-${e}`;
+      if (!linkMap.has(key1)) linkMap.set(key1, { source: s, target: e, value: 0, sourceName: origin, targetName: entity });
+      linkMap.get(key1).value += capacity;
+
+      const key2 = `${e}-${t}`;
+      if (!linkMap.has(key2)) linkMap.set(key2, { source: e, target: t, value: 0, sourceName: entity, targetName: dest });
+      linkMap.get(key2).value += cigSticks;
+    });
+
+    let links = Array.from(linkMap.values()).filter(l => l.source !== null && l.target !== null && l.value > 0);
+
+    const usedNodes = new Set();
+    links.forEach(l => { usedNodes.add(l.source); usedNodes.add(l.target); });
+    const filteredNodes = nodes.filter((_, i) => usedNodes.has(i));
+
+    const indexMap = new Map();
+    filteredNodes.forEach((n, i) => indexMap.set(n.name + "-L" + n.layer, i));
+
+    links = links.map(l => ({
+      ...l,
+      source: indexMap.get(nodes[l.source].name + "-L" + nodes[l.source].layer),
+      target: indexMap.get(nodes[l.target].name + "-L" + nodes[l.target].layer)
+    }));
+
+    const totalGap = totalOutput - totalCapacity;
+    const taxLoss = totalGap > 0 ? totalGap * 0.15 : 0;
+
+    let riskType = "BALANCED";
+    if (totalGap > totalCapacity * 0.3) riskType = "UNDER_DECLARATION";
+    else if (totalCapacity > totalOutput * 1.5) riskType = "STOCKPILING";
+    else if (totalGap > 0) riskType = "DIVERSION";
+
+    let severity = "LOW";
+    if (totalGap > 10000) severity = "CRITICAL";
+    else if (totalGap > 5000) severity = "HIGH";
+    else if (totalGap > 1000) severity = "MEDIUM";
+
+    const corridorMap = {};
+    links.forEach(l => {
+      const key = `${l.sourceName} → ${l.targetName}`;
+      corridorMap[key] = (corridorMap[key] || 0) + l.value;
+    });
+    const topCorridor = Object.entries(corridorMap).sort((a,b)=>b[1]-a[1])[0]?.[0];
+
+    const riskFlags = [];
+    if (severity !== "LOW") {
+      riskFlags.push({ type: severity, msg: `${riskType} risk detected with ${Math.round(totalGap).toLocaleString()} sticks gap.` });
+    }
+
+    return {
+      sankeyData: { nodes: filteredNodes, links },
+      summary: { totalOutput, totalCapacity, totalGap, taxLoss, severity, riskType, topCorridor },
+      riskFlags
+    };
+
+  }, [processedData]);
+
+  if (!sankeyData.nodes.length) return <div className="p-10 text-slate-500">Mapping Forensic Flow...</div>;
+
+  return (
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[700px] flex flex-col">
+      <div className="flex-grow">
         <ResponsiveContainer width="100%" height="100%">
-          <Sankey
-            data={sankeyData}
-            nodePadding={20}
-            linkCurvature={0.5}
-          >
-            <Tooltip content={<SankeyTooltip />} />
+          <Sankey data={sankeyData} nodePadding={30} link={{ stroke: "#38bdf8", strokeOpacity: 0.2 }} node={<SankeyNode />}>
+            <Tooltip content={<AuditTooltip />} />
           </Sankey>
         </ResponsiveContainer>
       </div>
 
+      <div className="mt-4 p-3 bg-blue-500/5 border border-blue-500/20 rounded text-[11px] text-slate-400 italic">
+        <strong className="text-blue-400">AI Forensic Summary:</strong>{" "}
+
+        Processed <strong className="text-white">{Math.round(summary?.totalOutput).toLocaleString()} sticks</strong>. 
+
+        {summary?.severity !== "LOW" && (
+          <span className="font-black text-red-500"> [{summary?.severity} RISK]</span>
+        )}
+
+        {summary?.riskType === "UNDER_DECLARATION" && (
+          <> Output exceeds feasible production capacity, indicating under-declaration of production or inputs.</>
+        )}
+
+        {summary?.riskType === "STOCKPILING" && (
+          <> Precursor inflows significantly exceed output, indicating stockpiling or buffering.</>
+        )}
+
+        {summary?.riskType === "DIVERSION" && (
+          <> Gap between input and output suggests diversion into parallel or unregulated markets.</>
+        )}
+
+        {summary?.riskType === "BALANCED" && (
+          <> Input and output flows are aligned with no material anomalies.</>
+        )}
+
+        {summary?.topCorridor && (
+          <> Top risk corridor: <strong className="text-yellow-400">{summary?.topCorridor}</strong>.</>
+        )}
+
+        {summary?.taxLoss > 0 && (
+          <> Estimated tax exposure: <strong className="text-red-500">${Math.round(summary?.taxLoss).toLocaleString()}</strong>.</>
+        )}
+
+        {riskFlags.map((f,i) => (
+          <div key={i} className="text-red-500 font-bold text-[10px] mt-1">[{f.type}] {f.msg}</div>
+        ))}
+      </div>
     </div>
   );
 }
