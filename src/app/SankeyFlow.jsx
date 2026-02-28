@@ -2,51 +2,52 @@ import React, { useMemo } from "react";
 import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function ChartDashboard({ data }) {
-  // 1. CLEAN + NORMALIZE DATA
+ // 1. CLEAN + NORMALIZE DATA (Diagnostic Version)
   const cleanData = useMemo(() => {
-    if (!data || !Array.isArray(data)) return [];
+    // DIAGNOSTIC LOG: Open your browser console (F12) to see this!
+    console.log("Raw data received by Chart:", data);
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.error("Data is either not an array or is empty.");
+      return [];
+    }
 
     const KG_PER_STICK = 0.0007;
-    const norm = (v) => (v && v.toString().trim() !== "" ? v.toString().trim() : "Unknown");
 
     return data
-      .filter(d => d && Object.values(d).some(v => v !== "" && v != null))
       .map((d, index) => {
-        const tobaccoKG = Number(d.tobacco || d.Tobacco || 0);
-        const paperKG = Number(d.paper || d.Paper || 0);
-        const filterKG = Number(d.filter || d.Filter || 0);
-        const towKG = Number(d.tow || d.Tow || 0);
-        const cigKG = Number(d.outflow || d.Outflow || 0);
+        // Fallback logic: if 'tobaccoOrigin' is missing, try 'origin' or 'Source'
+        const tOrigin = d.tobaccoOrigin || d.tobacco_origin || d.origin || d.Source || "";
+        const dest = d.destination || d.Destination || d.Target || "";
+        
+        // Material Keys
+        const tKG = Number(d.tobacco || d.Tobacco || 0);
+        const pKG = Number(d.paper || d.Paper || 0);
+        const fKG = Number(d.filter || d.Filter || 0);
+        const outKG = Number(d.outflow || d.Outflow || d.sticks || 0);
 
-        const tobaccoSticks = tobaccoKG / KG_PER_STICK;
-        const paperSticks = paperKG / KG_PER_STICK;
-        const filterSticks = filterKG / KG_PER_STICK;
-        const towSticks = towKG / KG_PER_STICK;
-        const cigSticks = cigKG / KG_PER_STICK;
-
-        const capacity = Math.min(
-          tobaccoSticks || Infinity,
-          paperSticks || Infinity,
-          filterSticks || Infinity,
-          towSticks || Infinity
-        );
+        const tobaccoSticks = tKG / KG_PER_STICK;
+        const cigSticks = outKG > 1000 ? outKG : outKG / KG_PER_STICK; // Handle if input is already sticks
 
         return {
           ...d,
           id: index + 1,
-          tobaccoOrigin: norm(d.tobaccoOrigin),
-          paperOrigin: norm(d.paperOrigin),
-          filterOrigin: norm(d.filterOrigin),
-          towOrigin: norm(d.towOrigin),
-          destination: norm(d.destination),
+          tobaccoOrigin: tOrigin.toString().trim() || "Missing Origin",
+          destination: dest.toString().trim() || "Missing Destination",
           tobaccoSticks,
-          paperSticks,
-          filterSticks,
-          towSticks,
+          paperSticks: (Number(d.paper || 0)) / KG_PER_STICK,
+          filterSticks: (Number(d.filter || 0)) / KG_PER_STICK,
+          towSticks: (Number(d.tow || 0)) / KG_PER_STICK,
           cigSticks,
-          capacity,
-          gap: cigSticks - capacity
+          capacity: tobaccoSticks, // Simplified for diagnostic
+          gap: cigSticks - tobaccoSticks
         };
+      })
+      .filter(d => {
+          // Only show rows that have both a start and an end point
+          const isValid = d.tobaccoOrigin !== "Missing Origin" && d.destination !== "Missing Destination";
+          if (!isValid) console.warn(`Row ${d.id} filtered out: Missing origin or destination.`);
+          return isValid;
       });
   }, [data]);
 
