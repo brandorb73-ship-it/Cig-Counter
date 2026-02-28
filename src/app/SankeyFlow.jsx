@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useMemo } from "react";
 import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
@@ -26,20 +28,45 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
 };
 
 /* =========================
-   TOOLTIP
+   TOOLTIP (FIXED)
 ========================= */
-const AuditTooltip = ({ payload }) => {
-  if (!payload || !payload.length) return null;
+const AuditTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
-  if (!d) return null;
+  if (!d || !d.sourceName) return null;
+
+  const gap = d.exportSticks - d.precursorSticks;
+  const taxLoss = gap > 0 ? gap * 0.15 : 0;
 
   return (
     <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl text-[11px] shadow-2xl">
       <div className="text-emerald-400 font-black mb-2 uppercase italic">Mass Balance Audit</div>
-      <div className="font-bold text-white mb-2 border-b border-slate-800 pb-1">{d.sourceName} → {d.targetName}</div>
+      <div className="font-bold text-white mb-2 border-b border-slate-800 pb-1">
+        {d.sourceName} → {d.targetName}
+      </div>
+
       <div className="space-y-1">
-        <div className="flex justify-between gap-4"><span>Sticks:</span><span className="text-white">{Math.round(d.value).toLocaleString()}</span></div>
-        <div className="flex justify-between gap-4"><span>KG:</span><span className="text-blue-400">{(d.value * 0.0007).toFixed(2)}</span></div>
+        <div className="flex justify-between">
+          <span>Precursor Capacity:</span>
+          <span className="text-emerald-400">
+            {Math.round(d.precursorSticks).toLocaleString()} sticks
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span>Exports:</span>
+          <span className="text-blue-400">
+            {Math.round(d.exportSticks).toLocaleString()} sticks
+          </span>
+        </div>
+
+        <div className={`mt-3 p-2 rounded text-center font-black ${
+          gap > 0 ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-400"
+        }`}>
+          {gap > 0
+            ? `TAX GAP: $${Math.round(taxLoss).toLocaleString()}`
+            : "AUDIT CLEAR"}
+        </div>
       </div>
     </div>
   );
@@ -49,168 +76,211 @@ const AuditTooltip = ({ payload }) => {
    MAIN COMPONENT
 ========================= */
 export default function SankeyFlow({ processedData }) {
-  const { sankeyData, summary, riskFlags } = useMemo(() => {
+  const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
     if (!processedData || processedData.length === 0) {
-      return { sankeyData: { nodes: [], links: [] }, summary: null, riskFlags: [] };
+      return { sankeyData: { nodes: [], links: [] }, riskLevel: "LOW", riskFlags: [], summary: null };
     }
 
-    const KG_TO_STICKS = 1 / 0.0007;
-    const YIELD = 0.95;
+    /* ========= CLEAN DATA ========= */
+    const cleanData = processedData.filter(d => {
+      if (!d || Object.values(d).every(v => !v)) return false;
+
+      const origin = d.origin || d.Origin;
+      const dest = d.dest || d.Dest || d.Destination;
+      const outflow = d.outflow || d.Outflow;
+
+      return origin && dest && outflow && Number(outflow) > 0;
+    });
 
     const nodes = [];
     const nodeMap = new Map();
     const linkMap = new Map();
 
     const addNode = (name, layer) => {
-      const safeName = (name || "Unknown").toString().trim();
-      if (!safeName) return null;
-      const key = `${safeName}-L${layer}`;
+      const safe = name || "Unknown Entity";
+      const key = `${safe}-L${layer}`;
       if (!nodeMap.has(key)) {
         const id = nodes.length;
-        nodes.push({ name: safeName, layer });
+        nodes.push({ name: safe, layer });
         nodeMap.set(key, id);
         return id;
       }
       return nodeMap.get(key);
     };
 
-    let totalCapacity = 0;
-    let totalOutput = 0;
+    /* ========= CORE LOOP ========= */
+    const sankeyData = useMemo(() => {
+    const rawFlows = [];
 
-    processedData.forEach(d => {
-      if (!d || Object.values(d).every(v => !v)) return;
+    cleanData.forEach(d => {
+      // Define all potential input paths
+      const paths = [
+        { source: d.tobaccoOrigin, value: d.tobaccoSticks },
+        { source: d.paperOrigin, value: d.paperSticks },
+        { source: d.filterOrigin, value: d.filterSticks },
+        { source: d.towOrigin, value: d.towSticks }
+      ];
 
-      const origin = d.origin || d.Origin || "Unknown";
-      const entity = d.entity || d.Entity || "Production Hub";
-      const dest = d.dest || d.Dest || d.Destination || "Unknown Market";
-
-      const tobaccoKG = Number(d.tobacco || d.Tobacco || 0);
-      const paperKG = Number(d.paper || d.Paper || 0);
-      const filterKG = Number(d.filter || d.Filter || 0);
-      const towKG = Number(d.tow || d.Tow || 0);
-      const cigKG = Number(d.outflow || d.Outflow || 0);
-
-      const tobaccoSticks = tobaccoKG * YIELD * KG_TO_STICKS;
-      const paperSticks = paperKG * YIELD * KG_TO_STICKS;
-      const filterSticks = filterKG * YIELD * KG_TO_STICKS;
-      const towSticks = towKG * YIELD * KG_TO_STICKS;
-      const cigSticks = cigKG * KG_TO_STICKS;
-
-      const capacity = Math.min(tobaccoSticks || Infinity, paperSticks || Infinity, filterSticks || Infinity, towSticks || Infinity);
-
-      totalCapacity += isFinite(capacity) ? capacity : 0;
-      totalOutput += cigSticks;
-
-      const s = addNode(origin, 0);
-      const e = addNode(entity, 1);
-      const t = addNode(dest, 2);
-      if (s === null || e === null || t === null) return;
-
-      const key1 = `${s}-${e}`;
-      if (!linkMap.has(key1)) linkMap.set(key1, { source: s, target: e, value: 0, sourceName: origin, targetName: entity });
-      linkMap.get(key1).value += capacity;
-
-      const key2 = `${e}-${t}`;
-      if (!linkMap.has(key2)) linkMap.set(key2, { source: e, target: t, value: 0, sourceName: entity, targetName: dest });
-      linkMap.get(key2).value += cigSticks;
+      paths.forEach(p => {
+        // 1. CRITICAL: Prevent circular loops (Source cannot be the same as Target)
+        // 2. Ensure value is a positive number
+        if (p.source && d.destination && p.source !== d.destination && p.value > 0) {
+          rawFlows.push({ 
+            source: p.source, 
+            target: d.destination, 
+            value: p.value 
+          });
+        }
+      });
     });
 
-    let links = Array.from(linkMap.values()).filter(l => l.source !== null && l.target !== null && l.value > 0);
+    // 3. Aggregate links to prevent duplicate source->target pairs (better performance)
+    const aggregatedLinks = {};
+    rawFlows.forEach(f => {
+      const key = `${f.source}→${f.target}`;
+      if (!aggregatedLinks[key]) {
+        aggregatedLinks[key] = { ...f };
+      } else {
+        aggregatedLinks[key].value += f.value;
+      }
+    });
 
-    const usedNodes = new Set();
-    links.forEach(l => { usedNodes.add(l.source); usedNodes.add(l.target); });
-    const filteredNodes = nodes.filter((_, i) => usedNodes.has(i));
+    const flows = Object.values(aggregatedLinks);
+    const nodes = [];
+    const nodeMap = {};
 
-    const indexMap = new Map();
-    filteredNodes.forEach((n, i) => indexMap.set(n.name + "-L" + n.layer, i));
+    flows.forEach(f => {
+      if (nodeMap[f.source] === undefined) {
+        nodeMap[f.source] = nodes.length;
+        nodes.push({ name: f.source });
+      }
+      if (nodeMap[f.target] === undefined) {
+        nodeMap[f.target] = nodes.length;
+        nodes.push({ name: f.target });
+      }
+    });
 
-    links = links.map(l => ({
-      ...l,
-      source: indexMap.get(nodes[l.source].name + "-L" + nodes[l.source].layer),
-      target: indexMap.get(nodes[l.target].name + "-L" + nodes[l.target].layer)
+    const links = flows.map(f => ({
+      source: nodeMap[f.source],
+      target: nodeMap[f.target],
+      value: f.value
     }));
 
-    const totalGap = totalOutput - totalCapacity;
-    const taxLoss = totalGap > 0 ? totalGap * 0.15 : 0;
-
-    let riskType = "BALANCED";
-    if (totalGap > totalCapacity * 0.3) riskType = "UNDER_DECLARATION";
-    else if (totalCapacity > totalOutput * 1.5) riskType = "STOCKPILING";
-    else if (totalGap > 0) riskType = "DIVERSION";
-
-    let severity = "LOW";
-    if (totalGap > 10000) severity = "CRITICAL";
-    else if (totalGap > 5000) severity = "HIGH";
-    else if (totalGap > 1000) severity = "MEDIUM";
-
-    const corridorMap = {};
-    links.forEach(l => {
-      const key = `${l.sourceName} → ${l.targetName}`;
-      corridorMap[key] = (corridorMap[key] || 0) + l.value;
-    });
-    const topCorridor = Object.entries(corridorMap).sort((a,b)=>b[1]-a[1])[0]?.[0];
-
-    const riskFlags = [];
-    if (severity !== "LOW") {
-      riskFlags.push({ type: severity, msg: `${riskType} risk detected with ${Math.round(totalGap).toLocaleString()} sticks gap.` });
+    // FINAL CHECK: Recharts fails if nodes or links are empty
+    if (nodes.length === 0 || links.length === 0) {
+        return { nodes: [{ name: "No Data" }], links: [] };
     }
 
-    return {
-      sankeyData: { nodes: filteredNodes, links },
-      summary: { totalOutput, totalCapacity, totalGap, taxLoss, severity, riskType, topCorridor },
-      riskFlags
-    };
+    return { nodes, links };
+  }, [cleanData]);
 
+    /* ========= FORENSIC TOTALS ========= */
+    const totalPrecursorSticks = links.reduce((a, b) => a + b.precursorSticks, 0) / 2;
+    const totalExportSticks = links.reduce((a, b) => a + b.exportSticks, 0) / 2;
+
+    const capacity = totalPrecursorSticks;
+    const stampGap = totalExportSticks - capacity;
+    const estTaxLoss = stampGap > 0 ? stampGap * 0.15 : 0;
+
+    /* ========= RISK FLAGS ========= */
+    const flags = [];
+    if (stampGap > 10000) flags.push({ msg: `Critical Stamp Gap: ${Math.round(stampGap).toLocaleString()} undeclared sticks.`, type: "CRITICAL" });
+    if (capacity > totalExportSticks * 1.5) flags.push({ msg: "High Stockpiling detected.", type: "HIGH" });
+
+    /* ========= TOP CORRIDOR ========= */
+    const topLink = links.reduce((max, l) => {
+      const gap = l.exportSticks - l.precursorSticks;
+      return gap > (max?.gap || 0) ? { ...l, gap } : max;
+    }, null);
+
+    /* ========= RISK TYPE ========= */
+    let riskType = "BALANCED";
+    if (stampGap > 0 && totalExportSticks > capacity * 1.2) riskType = "UNDER_DECLARATION";
+    else if (capacity > totalExportSticks * 1.5) riskType = "STOCKPILING";
+    else if (stampGap > 0) riskType = "DIVERSION";
+
+    /* ========= SEVERITY ========= */
+    let severity = "LOW";
+    if (estTaxLoss > 1000000) severity = "CRITICAL";
+    else if (estTaxLoss > 250000) severity = "HIGH";
+    else if (estTaxLoss > 50000) severity = "MEDIUM";
+
+    return {
+      sankeyData: { nodes, links },
+      riskLevel: severity,
+      riskFlags: flags,
+      summary: {
+        hub: cleanData[0]?.entity || "Main Hub",
+        destinations: [...new Set(cleanData.map(d => d.dest || d.Dest || d.Destination))],
+        totalSticks: totalExportSticks,
+        taxLoss: estTaxLoss,
+        capacity,
+        riskType,
+        severity,
+        topCorridor: topLink ? `${topLink.sourceName} → ${topLink.targetName}` : null
+      },
+    };
   }, [processedData]);
 
   if (!sankeyData.nodes.length) return <div className="p-10 text-slate-500">Mapping Forensic Flow...</div>;
 
   return (
     <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[700px] flex flex-col">
+
+      {/* HEADER */}
+      <div className="flex justify-between mb-6">
+        <h3 className="text-xs text-slate-400 uppercase font-black tracking-widest">
+          Revenue Protection Monitor
+        </h3>
+        <div className="px-4 py-1 border text-[10px] font-black rounded text-red-500 border-red-500">
+          {riskLevel} RISK
+        </div>
+      </div>
+
+      {/* SANKEY */}
       <div className="flex-grow">
         <ResponsiveContainer width="100%" height="100%">
-          <Sankey data={sankeyData} nodePadding={30} link={{ stroke: "#38bdf8", strokeOpacity: 0.2 }} node={<SankeyNode />}>
+          <Sankey
+            data={sankeyData}
+            nodePadding={40}
+            node={<SankeyNode />}
+            link={{ stroke: "#38bdf8", strokeOpacity: 0.25 }}
+          >
             <Tooltip content={<AuditTooltip />} />
           </Sankey>
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4 p-3 bg-blue-500/5 border border-blue-500/20 rounded text-[11px] text-slate-400 italic">
-        <strong className="text-blue-400">AI Forensic Summary:</strong>{" "}
-
-        Processed <strong className="text-white">{Math.round(summary?.totalOutput).toLocaleString()} sticks</strong>. 
-
-        {summary?.severity !== "LOW" && (
-          <span className="font-black text-red-500"> [{summary?.severity} RISK]</span>
-        )}
-
-        {summary?.riskType === "UNDER_DECLARATION" && (
-          <> Output exceeds feasible production capacity, indicating under-declaration of production or inputs.</>
-        )}
-
-        {summary?.riskType === "STOCKPILING" && (
-          <> Precursor inflows significantly exceed output, indicating stockpiling or buffering.</>
-        )}
-
-        {summary?.riskType === "DIVERSION" && (
-          <> Gap between input and output suggests diversion into parallel or unregulated markets.</>
-        )}
-
-        {summary?.riskType === "BALANCED" && (
-          <> Input and output flows are aligned with no material anomalies.</>
-        )}
-
-        {summary?.topCorridor && (
-          <> Top risk corridor: <strong className="text-yellow-400">{summary?.topCorridor}</strong>.</>
-        )}
-
-        {summary?.taxLoss > 0 && (
-          <> Estimated tax exposure: <strong className="text-red-500">${Math.round(summary?.taxLoss).toLocaleString()}</strong>.</>
-        )}
-
-        {riskFlags.map((f,i) => (
-          <div key={i} className="text-red-500 font-bold text-[10px] mt-1">[{f.type}] {f.msg}</div>
+      {/* FLAGS */}
+      <div className="mt-6 space-y-2">
+        {riskFlags.map((f, i) => (
+          <div key={i} className="p-2 bg-black/40 border border-slate-800 rounded text-[11px]">
+            <span className="text-red-500 font-bold">[{f.type}]</span> {f.msg}
+          </div>
         ))}
+
+        {/* SUMMARY */}
+        <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded text-[11px] text-slate-400 italic">
+          <strong className="text-blue-400 not-italic">AI Forensic Summary:</strong>{" "}
+          The hub <strong className="text-white">{summary?.hub}</strong> supplied{" "}
+          <strong className="text-white">{summary?.destinations?.slice(0, 3).join(", ")}</strong>, processing{" "}
+          <strong className="text-white">{Math.round(summary?.totalSticks).toLocaleString()} sticks</strong>.{" "}
+
+          <span className="text-red-400 font-bold">[{summary?.severity}]</span>{" "}
+
+          {summary?.riskType === "UNDER_DECLARATION" && "Output exceeds feasible capacity — likely under-declaration."}
+          {summary?.riskType === "STOCKPILING" && "Excess precursor indicates stockpiling behaviour."}
+          {summary?.riskType === "DIVERSION" && "Mismatch suggests diversion to unregulated markets."}
+          {summary?.riskType === "BALANCED" && "No material discrepancy detected."}
+
+          {summary?.topCorridor && (
+            <> Highest risk corridor: <strong className="text-red-400">{summary.topCorridor}</strong>.</>
+          )}
+
+          {summary?.taxLoss > 0 && (
+            <> Estimated tax exposure: <strong className="text-red-500">${summary.taxLoss.toLocaleString()}</strong>.</>
+          )}
+        </div>
       </div>
     </div>
   );
