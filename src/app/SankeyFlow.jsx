@@ -28,29 +28,44 @@ const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => 
 };
 
 /* =========================
-   TOOLTIP: FORENSIC MATH
+   TOOLTIP (FIXED)
 ========================= */
 const AuditTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
   if (!d || !d.sourceName) return null;
 
-  // Conversion: 1kg tobacco = ~1,357 sticks (at 95% yield)
-const precursorSticks = d.tobaccoKG * 0.95 / 0.0007;
-const exportSticks = d.actualSticks / 0.0007; // if stored as KG
-  const gap = Math.round(exportSticks - precursorCapacity);
+  const gap = d.exportSticks - d.precursorSticks;
   const taxLoss = gap > 0 ? gap * 0.15 : 0;
 
   return (
     <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl text-[11px] shadow-2xl">
       <div className="text-emerald-400 font-black mb-2 uppercase italic">Mass Balance Audit</div>
-      <div className="font-bold text-white mb-2 border-b border-slate-800 pb-1">{d.sourceName} → {d.targetName}</div>
+      <div className="font-bold text-white mb-2 border-b border-slate-800 pb-1">
+        {d.sourceName} → {d.targetName}
+      </div>
+
       <div className="space-y-1">
-        <div className="flex justify-between gap-4"><span>Precursor (Tobacco):</span><span className="text-white">{Math.round(d.tobaccoKG).toLocaleString()} KG</span></div>
-        <div className="flex justify-between gap-4"><span>Converted Capacity:</span><span className="text-emerald-400">{Math.round(precursorCapacity).toLocaleString()} sticks</span></div>
-        <div className="flex justify-between gap-4"><span>Actual Exports:</span><span className="text-blue-400">{Math.round(exportSticks).toLocaleString()} sticks</span></div>
-        <div className={`mt-3 p-2 rounded text-center font-black ${gap > 0 ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-400"}`}>
-          {gap > 0 ? `TAX GAP: $${taxLoss.toLocaleString()}` : "AUDIT CLEAR"}
+        <div className="flex justify-between">
+          <span>Precursor Capacity:</span>
+          <span className="text-emerald-400">
+            {Math.round(d.precursorSticks).toLocaleString()} sticks
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span>Exports:</span>
+          <span className="text-blue-400">
+            {Math.round(d.exportSticks).toLocaleString()} sticks
+          </span>
+        </div>
+
+        <div className={`mt-3 p-2 rounded text-center font-black ${
+          gap > 0 ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-400"
+        }`}>
+          {gap > 0
+            ? `TAX GAP: $${Math.round(taxLoss).toLocaleString()}`
+            : "AUDIT CLEAR"}
         </div>
       </div>
     </div>
@@ -61,28 +76,27 @@ const exportSticks = d.actualSticks / 0.0007; // if stored as KG
    MAIN COMPONENT
 ========================= */
 export default function SankeyFlow({ processedData }) {
-const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
-  if (!processedData || processedData.length === 0) {
-    return { sankeyData: { nodes: [], links: [] }, riskLevel: "LOW", riskFlags: [], summary: null };
-  }
+  const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
+    if (!processedData || processedData.length === 0) {
+      return { sankeyData: { nodes: [], links: [] }, riskLevel: "LOW", riskFlags: [], summary: null };
+    }
 
-  const cleanData = processedData.filter(d => {
-    if (!d || Object.values(d).every(v => !v)) return false;
+    /* ========= CLEAN DATA ========= */
+    const cleanData = processedData.filter(d => {
+      if (!d || Object.values(d).every(v => !v)) return false;
 
-    const origin = d.origin || d.Origin;
-    const dest = d.dest || d.Dest || d.Destination;
-    const outflow = d.outflow || d.Outflow;
+      const origin = d.origin || d.Origin;
+      const dest = d.dest || d.Dest || d.Destination;
+      const outflow = d.outflow || d.Outflow;
 
-    return origin && dest && outflow && Number(outflow) > 0;
-  });
+      return origin && dest && outflow && Number(outflow) > 0;
+    });
 
-  const nodes = [];
-  const nodeMap = new Map();
-  const linkMap = new Map();
+    const nodes = [];
+    const nodeMap = new Map();
+    const linkMap = new Map();
 
-    // 1. DATA CLEANING & UNIT CONVERSION
     const addNode = (name, layer) => {
-      // Handles case-insensitive column naming
       const safe = name || "Unknown Entity";
       const key = `${safe}-L${layer}`;
       if (!nodeMap.has(key)) {
@@ -94,31 +108,22 @@ const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
       return nodeMap.get(key);
     };
 
+    /* ========= CORE LOOP ========= */
     cleanData.forEach((d) => {
-      // Normalize Column Keys (Supports 'origin' or 'Origin', etc)
       const origin = d.origin || d.Origin || "Unknown";
       const entity = d.entity || d.Entity || "Production Hub";
       const dest = d.dest || d.Dest || d.Destination || "Unknown Market";
 
-      // UNIT CONVERSION
-      // If inflow/outflow is in KG, convert to sticks (1kg = 1000 sticks approx)
+      const KG_TO_STICKS = 1 / 0.0007;
+      const YIELD = 0.95;
+
       const tobaccoKG = Number(d.tobacco) || Number(d.Tobacco) || 0;
-      const KG_TO_STICKS = 1 / 0.0007; // ~1428 sticks per KG
-const YIELD = 0.95;
+      const cigKG = Number(d.outflow) || Number(d.Outflow) || 0;
 
-// Inputs
-const tobaccoKG = Number(d.tobacco) || Number(d.Tobacco) || 0;
-const cigKG = Number(d.outflow) || Number(d.Outflow) || 0;
+      const precursorSticks = tobaccoKG * YIELD * KG_TO_STICKS;
+      const exportSticks = cigKG * KG_TO_STICKS;
 
-// Convert BOTH to sticks
-const precursorSticks = tobaccoKG * YIELD * KG_TO_STICKS;
-const exportSticks = cigKG * KG_TO_STICKS;
-
-// Gap logic
-const gap = exportSticks - precursorSticks;
-
-      // Visual scaling for the chart
-      const scaledValue = exportSticks; // TRUE VALUE
+      const scaledValue = exportSticks / 1000;
 
       const s = addNode(origin, 0);
       const e = addNode(entity, 1);
@@ -127,40 +132,73 @@ const gap = exportSticks - precursorSticks;
       const update = (src, tgt, sName, tName) => {
         const key = `${src}-${tgt}`;
         if (!linkMap.has(key)) {
-          linkMap.set(key, { source: src, target: tgt, sourceName: sName, targetName: tName, value: 0, tobaccoKG: 0, actualSticks: 0 });
+          linkMap.set(key, {
+            source: src,
+            target: tgt,
+            sourceName: sName,
+            targetName: tName,
+            value: 0,
+            precursorSticks: 0,
+            exportSticks: 0
+          });
         }
+
         const l = linkMap.get(key);
         l.value += scaledValue;
-        l.tobaccoKG += tobaccoKG;
-        l.actualSticks += actualSticks;
+        l.precursorSticks += precursorSticks;
+        l.exportSticks += exportSticks;
       };
 
       update(s, e, origin, entity);
       update(e, t, entity, dest);
     });
 
-    let links = Array.from(linkMap.values()).filter(l => l.value > 0);
+    const links = Array.from(linkMap.values()).filter(l => l.value > 0);
 
-    /* ========= FORENSIC ANALYTICS ========= */
-    const totalTobacco = links.reduce((a, b) => a + b.tobaccoKG, 0) / 2;
-    const totalActualSticks = links.reduce((a, b) => a + b.actualSticks, 0) / 2;
-    const capacity = (totalTobacco * 0.95) / 0.0007;
-    const stampGap = totalActualSticks - capacity;
+    /* ========= FORENSIC TOTALS ========= */
+    const totalPrecursorSticks = links.reduce((a, b) => a + b.precursorSticks, 0) / 2;
+    const totalExportSticks = links.reduce((a, b) => a + b.exportSticks, 0) / 2;
+
+    const capacity = totalPrecursorSticks;
+    const stampGap = totalExportSticks - capacity;
     const estTaxLoss = stampGap > 0 ? stampGap * 0.15 : 0;
 
+    /* ========= RISK FLAGS ========= */
     const flags = [];
     if (stampGap > 10000) flags.push({ msg: `Critical Stamp Gap: ${Math.round(stampGap).toLocaleString()} undeclared sticks.`, type: "CRITICAL" });
-    if (capacity > totalActualSticks * 1.5) flags.push({ msg: "High Stockpiling: Precursors exceed output by 50%.", type: "HIGH" });
+    if (capacity > totalExportSticks * 1.5) flags.push({ msg: "High Stockpiling detected.", type: "HIGH" });
+
+    /* ========= TOP CORRIDOR ========= */
+    const topLink = links.reduce((max, l) => {
+      const gap = l.exportSticks - l.precursorSticks;
+      return gap > (max?.gap || 0) ? { ...l, gap } : max;
+    }, null);
+
+    /* ========= RISK TYPE ========= */
+    let riskType = "BALANCED";
+    if (stampGap > 0 && totalExportSticks > capacity * 1.2) riskType = "UNDER_DECLARATION";
+    else if (capacity > totalExportSticks * 1.5) riskType = "STOCKPILING";
+    else if (stampGap > 0) riskType = "DIVERSION";
+
+    /* ========= SEVERITY ========= */
+    let severity = "LOW";
+    if (estTaxLoss > 1000000) severity = "CRITICAL";
+    else if (estTaxLoss > 250000) severity = "HIGH";
+    else if (estTaxLoss > 50000) severity = "MEDIUM";
 
     return {
       sankeyData: { nodes, links },
-      riskLevel: flags.length > 0 ? flags[0].type : "LOW",
+      riskLevel: severity,
       riskFlags: flags,
       summary: {
-        hub: processedData[0]?.entity || processedData[0]?.Entity || "Main Hub",
-        totalSticks: totalActualSticks,
+        hub: cleanData[0]?.entity || "Main Hub",
+        destinations: [...new Set(cleanData.map(d => d.dest || d.Dest || d.Destination))],
+        totalSticks: totalExportSticks,
         taxLoss: estTaxLoss,
-        capacity: capacity
+        capacity,
+        riskType,
+        severity,
+        topCorridor: topLink ? `${topLink.sourceName} → ${topLink.targetName}` : null
       },
     };
   }, [processedData]);
@@ -169,107 +207,60 @@ const gap = exportSticks - precursorSticks;
 
   return (
     <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[700px] flex flex-col">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xs text-slate-400 uppercase font-black tracking-widest">Revenue Protection Monitor</h3>
-        <div className={`px-4 py-1 border text-[10px] font-black rounded ${riskLevel === 'CRITICAL' ? 'text-red-500 border-red-500 bg-red-500/10' : 'text-emerald-500 border-emerald-500'}`}>
+
+      {/* HEADER */}
+      <div className="flex justify-between mb-6">
+        <h3 className="text-xs text-slate-400 uppercase font-black tracking-widest">
+          Revenue Protection Monitor
+        </h3>
+        <div className="px-4 py-1 border text-[10px] font-black rounded text-red-500 border-red-500">
           {riskLevel} RISK
         </div>
       </div>
 
+      {/* SANKEY */}
       <div className="flex-grow">
         <ResponsiveContainer width="100%" height="100%">
           <Sankey
             data={sankeyData}
             nodePadding={40}
             node={<SankeyNode />}
-            link={{ stroke: "#38bdf8", strokeOpacity: 0.2 }}
+            link={{ stroke: "#38bdf8", strokeOpacity: 0.25 }}
           >
             <Tooltip content={<AuditTooltip />} />
           </Sankey>
         </ResponsiveContainer>
       </div>
 
+      {/* FLAGS */}
       <div className="mt-6 space-y-2">
         {riskFlags.map((f, i) => (
-          <div key={i} className="flex items-center gap-2 p-2 bg-black/40 border border-slate-800 rounded text-[11px]">
-            <span className="text-red-500 font-bold underline">[{f.type}]</span>
-            <span className="text-slate-200">{f.msg}</span>
+          <div key={i} className="p-2 bg-black/40 border border-slate-800 rounded text-[11px]">
+            <span className="text-red-500 font-bold">[{f.type}]</span> {f.msg}
           </div>
         ))}
+
+        {/* SUMMARY */}
         <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded text-[11px] text-slate-400 italic">
-<strong className="text-blue-400 not-italic">AI Forensic Summary:</strong>{" "}
+          <strong className="text-blue-400 not-italic">AI Forensic Summary:</strong>{" "}
+          The hub <strong className="text-white">{summary?.hub}</strong> supplied{" "}
+          <strong className="text-white">{summary?.destinations?.slice(0, 3).join(", ")}</strong>, processing{" "}
+          <strong className="text-white">{Math.round(summary?.totalSticks).toLocaleString()} sticks</strong>.{" "}
 
-The hub <strong className="text-white">{summary?.hub}</strong> supplied{" "}
-<strong className="text-white">
-  {summary?.destinations?.slice(0, 3).join(", ")}
-</strong>
-{summary?.destinations?.length > 3 ? " and other markets" : ""},{" "}
-processing{" "}
-<strong className="text-white">
-  {Math.round(summary?.totalSticks).toLocaleString()} sticks
-</strong>{" "}
-(after converting KG volumes into stick equivalents).{" "}
+          <span className="text-red-400 font-bold">[{summary?.severity}]</span>{" "}
 
-{/* 🔴 TAX LOSS GRADING — ADD IT RIGHT HERE */}
-{summary?.taxLoss > 0 && (
-  <span className={`font-black ${
-    summary?.severity === "CRITICAL" ? "text-red-500" :
-    summary?.severity === "HIGH" ? "text-orange-400" :
-    summary?.severity === "MEDIUM" ? "text-yellow-400" :
-    "text-emerald-400"
-  }`}>
-    [{summary?.severity} RISK]
-  </span>
-)}{" "}
+          {summary?.riskType === "UNDER_DECLARATION" && "Output exceeds feasible capacity — likely under-declaration."}
+          {summary?.riskType === "STOCKPILING" && "Excess precursor indicates stockpiling behaviour."}
+          {summary?.riskType === "DIVERSION" && "Mismatch suggests diversion to unregulated markets."}
+          {summary?.riskType === "BALANCED" && "No material discrepancy detected."}
 
-{/* 🧠 DYNAMIC EXPLANATION */}
-{summary?.riskType === "UNDER_DECLARATION" && (
-  <>
-    Mass-balance indicates output exceeds feasible production capacity (
-    {Math.round(summary?.capacity).toLocaleString()} sticks), suggesting
-    systematic under-declaration of production or misreporting of inputs.
-  </>
-)}
+          {summary?.topCorridor && (
+            <> Highest risk corridor: <strong className="text-red-400">{summary.topCorridor}</strong>.</>
+          )}
 
-{summary?.riskType === "STOCKPILING" && (
-  <>
-    Precursor inflows significantly exceed declared cigarette output,
-    indicating potential stockpiling, buffering, or delayed distribution risk.
-  </>
-)}
-
-{summary?.riskType === "DIVERSION" && (
-  <>
-    A measurable gap between precursor input and export volumes suggests
-    potential diversion into unregulated or parallel markets.
-  </>
-)}
-
-{summary?.riskType === "BALANCED" && (
-  <>
-    Precursor inputs and cigarette outputs are broadly aligned, indicating
-    no material anomaly in production flows.
-  </>
-)}
-
-{/* 📊 TOP CORRIDOR */}
-{summary?.topCorridor && summary?.taxLoss > 0 && (
-  <>
-    {" "}The highest-risk corridor identified is{" "}
-    <strong className="text-red-400">{summary?.topCorridor}</strong>, 
-    contributing disproportionately to the detected discrepancy.
-  </>
-)}
-
-{/* 💰 TAX LOSS FINAL */}
-{summary?.taxLoss > 0 && (
-  <>
-    {" "}Estimated revenue exposure is{" "}
-    <strong className="text-red-500">
-      ${summary?.taxLoss.toLocaleString()}
-    </strong>.
-  </>
-)}
+          {summary?.taxLoss > 0 && (
+            <> Estimated tax exposure: <strong className="text-red-500">${summary.taxLoss.toLocaleString()}</strong>.</>
+          )}
         </div>
       </div>
     </div>
