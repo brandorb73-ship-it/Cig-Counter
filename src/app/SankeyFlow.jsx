@@ -1,227 +1,183 @@
 import React, { useMemo } from "react";
-import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
+import {
+  Sankey,
+  Tooltip,
+  ResponsiveContainer
+} from "recharts";
 
-export default function ChartDashboard({ data }) {
-const cleanData = useMemo(() => {
-    // 🔍 DEBUG: Look at your browser console to see what 'data' actually is
-    console.log("Raw Data Input:", data);
+// ---------- HELPERS ----------
 
-    if (!data) return [];
-    
-    // Support for cases where data might be nested in an object (e.g. { data: [...] })
-    const actualArray = Array.isArray(data) ? data : (data.records || data.data || []);
-    
-    const KG_PER_STICK = 0.0007;
+// Fix comma numbers like "173,250.00"
+const parseNum = (v) => {
+  if (!v) return 0;
+  return Number(String(v).replace(/,/g, ""));
+};
 
-    return actualArray.map((d, index) => {
-      // UNIVERSAL KEY PICKER: Tries multiple naming conventions
-      const getVal = (paths) => {
-        const found = paths.find(p => d[p] !== undefined && d[p] !== null);
-        return found !== undefined ? d[found] : null;
-      };
+const KG_TO_STICKS = 1000;
 
-      const tOrigin = getVal(['tobaccoOrigin', 'Tobacco Origin', 'origin', 'Source', 'From']);
-      const dest = getVal(['destination', 'Destination', 'Target', 'To']);
-      const outVal = Number(getVal(['outflow', 'Outflow', 'sticks', 'Sticks', 'Total_Production']) || 0);
-      const tKG = Number(getVal(['tobacco', 'Tobacco', 'tobacco_kg', 'Input_KG']) || 0);
+// Convert KG → sticks
+const toSticks = (kg) => {
+  if (!kg || isNaN(kg)) return 0;
+  return kg * KG_TO_STICKS;
+};
 
-      const tobaccoSticks = tKG / KG_PER_STICK;
-      
-      return {
-        ...d,
-        id: index + 1,
-        tobaccoOrigin: tOrigin ? String(tOrigin).trim() : null,
-        destination: dest ? String(dest).trim() : null,
-        tobaccoSticks: tobaccoSticks,
-        cigSticks: outVal,
-        gap: outVal - tobaccoSticks
-      };
-    }).filter(row => {
-      // Only keep the row if it has a valid source AND destination
-      const hasPath = row.tobaccoOrigin && row.destination;
-      if (!hasPath) {
-        console.warn(`Row ${row.id} hidden: Missing 'origin' or 'destination' keys. Check column names.`);
-      }
-      return hasPath;
-    });
-  }, [data]);
+// ---------- TOOLTIP ----------
 
-  // 2. SANKEY DATA + VALIDATION (LOOP-PROOF)
-  const EMPTY_SANKEY = useMemo(() => ({ nodes: [], links: [] }), []);
+const CustomTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
 
-  const { sankeyData, validationErrors } = useMemo(() => {
-    if (!cleanData.length) return { sankeyData: EMPTY_SANKEY, validationErrors: [] };
+  const data = payload[0]?.payload;
 
-    const nodes = [];
-    const nodeMap = new Map();
+  if (!data) return null;
+
+  const sticks = Math.round(data.value);
+  const kg = Math.round(data.value / KG_TO_STICKS);
+
+  return (
+    <div className="bg-black p-3 border border-gray-700 rounded text-xs">
+      <div><strong>Flow:</strong> {data.source?.name} → {data.target?.name}</div>
+      <div>Sticks: {sticks.toLocaleString()}</div>
+      <div>KG: {kg.toLocaleString()}</div>
+    </div>
+  );
+};
+
+// ---------- MAIN COMPONENT ----------
+
+export default function ForensicSankey({ rawData }) {
+
+  const sankeyData = useMemo(() => {
+
+    // ---------- CLEAN DATA ----------
+    const cleanData = rawData.map((d, i) => ({
+      id: i,
+      hub: d.Entity || "Unknown Hub",
+
+      tobaccoKG: parseNum(d.Tobacco),
+      paperKG: parseNum(d.Paper),
+      filterKG: parseNum(d.Filter),
+      towKG: parseNum(d.Tow),
+      cigKG: parseNum(d["Cigarette Exports"]),
+
+      tobaccoOrigin: d["Tobacco Origin"] || "Unknown",
+      paperOrigin: d["Paper Origin"] || "Unknown",
+      filterOrigin: d["Filter Origin"] || "Unknown",
+      towOrigin: d["Tow Origin"] || "Unknown",
+
+      destination: d.Destination || "Unknown"
+    }));
+
+    console.log("✅ Clean Data:", cleanData);
+
+    // ---------- BUILD LINKS ----------
     const links = [];
-    const errors = [];
 
-    const addNode = (name) => {
-      if (!nodeMap.has(name)) {
-        nodeMap.set(name, nodes.length);
-        nodes.push({ name });
+    cleanData.forEach(d => {
+
+      const hub = d.hub;
+
+      // Tobacco → Hub (PRIMARY DRIVER)
+      const tobaccoSticks = toSticks(d.tobaccoKG);
+
+      if (tobaccoSticks > 0) {
+        links.push({
+          source: d.tobaccoOrigin,
+          target: hub,
+          value: tobaccoSticks,
+          type: "input"
+        });
       }
-      return nodeMap.get(name);
-    };
 
-    cleanData.forEach((d) => {
-      const paths = [
-        { label: "Tobacco", s: d.tobaccoOrigin, v: d.tobaccoSticks },
-        { label: "Paper", s: d.paperOrigin, v: d.paperSticks },
-        { label: "Filter", s: d.filterOrigin, v: d.filterSticks },
-        { label: "Tow", s: d.towOrigin, v: d.towSticks }
+      // Optional precursors (only if present)
+      const extras = [
+        { origin: d.paperOrigin, kg: d.paperKG },
+        { origin: d.filterOrigin, kg: d.filterKG },
+        { origin: d.towOrigin, kg: d.towKG }
       ];
 
-      paths.forEach(({ label, s, v }) => {
-        if (!s || !d.destination || s === "Unknown") return;
-
-        // CRITICAL: Block circular loops to prevent Error #310
-        if (s === d.destination) {
-          errors.push(`Row ${d.id}: Circular path [${s} → ${d.destination}] skipped.`);
-          return;
-        }
-
-        if (v > 0) {
+      extras.forEach(e => {
+        const val = toSticks(e.kg);
+        if (val > 0 && e.origin !== "Unknown") {
           links.push({
-            source: addNode(s),
-            target: addNode(d.destination),
-            value: v,
-            type: label
+            source: e.origin,
+            target: hub,
+            value: val,
+            type: "input"
           });
         }
       });
+
+      // Hub → Destination
+      const output = toSticks(d.cigKG);
+
+      if (output > 0) {
+        links.push({
+          source: hub,
+          target: d.destination,
+          value: output,
+          type: "output"
+        });
+      }
     });
 
+    console.log("✅ Raw Links:", links);
+
+    // ---------- BUILD NODES ----------
+    const nodeSet = new Set();
+
+    links.forEach(l => {
+      nodeSet.add(l.source);
+      nodeSet.add(l.target);
+    });
+
+    const nodes = Array.from(nodeSet).map(name => ({ name }));
+
+    const nodeIndex = new Map(nodes.map((n, i) => [n.name, i]));
+
+    // ---------- SAFE LINKS ----------
+    const finalLinks = links
+      .filter(l => nodeIndex.has(l.source) && nodeIndex.has(l.target))
+      .map(l => ({
+        source: nodeIndex.get(l.source),
+        target: nodeIndex.get(l.target),
+        value: l.value
+      }));
+
+    console.log("✅ Final Links:", finalLinks);
+    console.log("✅ Nodes:", nodes);
+
     return {
-      sankeyData: links.length > 0 ? { nodes, links } : EMPTY_SANKEY,
-      validationErrors: errors
+      nodes,
+      links: finalLinks
     };
-  }, [cleanData, EMPTY_SANKEY]);
 
-  // 3. SUMMARY CALCULATIONS
-  const summary = useMemo(() => {
-    if (!cleanData.length) return null;
-    const totalSticks = cleanData.reduce((sum, d) => sum + d.cigSticks, 0);
-    const totalCapacity = cleanData.reduce((sum, d) => sum + (d.capacity || 0), 0);
-    const totalGap = totalSticks - totalCapacity;
-    const taxLoss = (Math.max(0, totalGap) / 1000) * 350;
+  }, [rawData]);
 
-    return {
-      totalSticks,
-      taxLoss,
-      riskGrade: taxLoss > 1000000 ? "Severe" : taxLoss > 50000 ? "Moderate" : "Low"
-    };
-  }, [cleanData]);
-
-  // 4. CUSTOM TOOLTIP
-  const SankeyTooltip = ({ payload }) => {
-    if (!payload || !payload.length) return null;
-    const { source, target, value } = payload[0].payload;
+  // ---------- EMPTY STATE ----------
+  if (!sankeyData.nodes.length || !sankeyData.links.length) {
     return (
-      <div className="bg-slate-950 border border-slate-700 p-3 text-xs shadow-xl rounded-md">
-        <div className="text-blue-400 font-bold mb-1">{source.name} → {target.name}</div>
-        <div className="text-white">Sticks: {Math.round(value).toLocaleString()}</div>
-        <div className="text-gray-400">Weight: {(value * 0.0007).toFixed(2)} kg</div>
+      <div className="text-red-400 p-4">
+        ⚠️ No valid Sankey data — check CSV mapping / parsing
       </div>
     );
-  };
+  }
 
+  // ---------- RENDER ----------
   return (
-    <div className="p-6 bg-slate-950 min-h-screen space-y-6 text-slate-200">
-      
-      {/* 5. SUMMARY HEADER */}
-      {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-            <p className="text-gray-400 text-xs uppercase">Total Production</p>
-            <p className="text-2xl font-bold">{Math.round(summary.totalSticks).toLocaleString()} sticks</p>
-          </div>
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 border-l-4 border-l-red-500">
-            <p className="text-gray-400 text-xs uppercase">Tax Exposure</p>
-            <p className="text-2xl font-bold text-red-400">${Math.round(summary.taxLoss).toLocaleString()}</p>
-          </div>
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-            <p className="text-gray-400 text-xs uppercase">Risk Profile</p>
-            <p className="text-2xl font-bold text-yellow-500">{summary.riskGrade}</p>
-          </div>
-        </div>
-      )}
+    <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+      <h3 className="text-sm text-white mb-2 font-bold">
+        Forensic Flow (Origin → Entity → Destination)
+      </h3>
 
-      {/* 6. VALIDATION ALERT */}
-      {validationErrors.length > 0 && (
-        <div className="bg-amber-900/20 border border-amber-600/50 p-4 rounded-xl text-amber-200 text-xs">
-          <strong className="block mb-1">⚠️ Supply Chain Anomalies Detected:</strong>
-          <ul className="list-disc list-inside opacity-80">
-            {validationErrors.slice(0, 3).map((err, i) => <li key={i}>{err}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* 7. SANKEY CHART */}
-      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 h-[500px]">
-        {sankeyData.links.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <Sankey
-              data={sankeyData}
-              nodePadding={30}
-              iterations={64}
-              link={{ stroke: '#334155' }}
-              node={{ fill: '#3b82f6', stroke: '#1e3a8a' }}
-            >
-              <Tooltip content={<SankeyTooltip />} />
-            </Sankey>
-          </ResponsiveContainer>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center text-slate-500 italic">
-            <p>No valid supply chain links found.</p>
-            <p className="text-xs">Ensure origins and destinations are distinct.</p>
-          </div>
-        )}
-      </div>
-
-      {/* 8. FORENSIC DATA TABLE */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
-          <h3 className="text-sm font-bold">Forensic Raw Data Ledger</h3>
-        </div>
-        <div className="overflow-x-auto max-h-96">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-800 text-gray-400 sticky top-0">
-              <tr>
-                <th className="p-3">ID</th>
-                <th className="p-3">Origin (Tobacco)</th>
-                <th className="p-3">Destination</th>
-                <th className="p-3 text-right">Outflow (Sticks)</th>
-                <th className="p-3 text-right">Tax Gap</th>
-                <th className="p-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {cleanData.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-800/50 transition-colors">
-                  <td className="p-3 text-gray-500">{row.id}</td>
-                  <td className="p-3 font-medium">{row.tobaccoOrigin}</td>
-                  <td className="p-3">{row.destination}</td>
-                  <td className="p-3 text-right">{Math.round(row.cigSticks).toLocaleString()}</td>
-                  <td className={`p-3 text-right font-mono ${row.gap > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                    {row.gap > 0 ? `+${Math.round(row.gap).toLocaleString()}` : '0'}
-                  </td>
-                  <td className="p-3">
-                    {row.tobaccoOrigin === row.destination ? (
-                      <span className="text-red-500">● Circular</span>
-                    ) : row.gap > 1000 ? (
-                      <span className="text-amber-500">● High Gap</span>
-                    ) : (
-                      <span className="text-green-500">● Valid</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <ResponsiveContainer width="100%" height={500}>
+        <Sankey
+          data={sankeyData}
+          nodePadding={20}
+          margin={{ top: 20, right: 50, bottom: 20, left: 50 }}
+        >
+          <Tooltip content={<CustomTooltip />} />
+        </Sankey>
+      </ResponsiveContainer>
     </div>
   );
 }
