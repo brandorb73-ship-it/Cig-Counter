@@ -212,6 +212,61 @@ const anomalies = useMemo(() => {
   });
 }, [processedData]);
 
+const aiSummary = useMemo(() => {
+  if (!processedData.length) return "Upload data to generate forensic insight.";
+
+  const latest = processedData[processedData.length - 1];
+
+  const gap = latest.stampGap;
+  const integrity =
+    latest.cumulativeInput > 0
+      ? (latest.cumulativeOutput / latest.cumulativeInput) * 100
+      : 0;
+
+  const trend =
+    processedData.length > 2
+      ? latest.outflow > processedData[processedData.length - 2].outflow
+        ? "increasing"
+        : "declining"
+      : "stable";
+
+  const anomalyCount = anomalies.length;
+
+  // 🔥 Narrative Logic
+  let riskLevel = "LOW RISK";
+  if (gap > 1_000_000 || integrity > 110) riskLevel = "CRITICAL";
+  else if (gap > 250_000 || integrity > 100) riskLevel = "HIGH";
+  else if (gap > 50_000) riskLevel = "MODERATE";
+
+  return `
+${riskLevel} FORENSIC SIGNAL
+
+• Modeled production capacity vs declared exports shows ${
+    integrity > 100 ? "OUTPUT EXCEEDING INPUT capacity" : "aligned output"
+  }.
+
+• Total volumetric gap: ${formatNumber(gap)} sticks.
+
+• Export trend is ${trend}, suggesting ${
+    trend === "increasing"
+      ? "escalating distribution activity"
+      : trend === "declining"
+      ? "cooling shipment patterns"
+      : "no strong directional shift"
+  }.
+
+• ${anomalyCount} abnormal shipment spikes detected.
+
+${
+  integrity > 110
+    ? "⚠️ Strong indicator of external sourcing, illicit manufacturing, or under-declared raw material inputs."
+    : integrity > 100
+    ? "⚠️ Potential leakage or unaccounted production inputs."
+    : "✓ No structural imbalance detected."
+}
+`;
+}, [processedData, anomalies]);
+
 const benford = useMemo(() => {
   const counts = Array(9).fill(0);
 
@@ -339,11 +394,39 @@ const benford = useMemo(() => {
 />
 
 <Tooltip
-  formatter={(value) => formatNumber(value)}
-  contentStyle={{
-    backgroundColor: "#020617",
-    border: "1px solid #334155",
-    color: "#e2e8f0"
+  content={({ active, payload }) => {
+    if (!active || !payload || !payload.length) return null;
+
+    const d = payload[0].payload;
+
+    const KG_TO_STICKS = 1 / 0.0007;
+
+    const inputKG = d.inventoryPool / KG_TO_STICKS; // reverse derived
+    const exportKG = d.outflow * 0.0007;
+
+    return (
+      <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-xs">
+        <p className="font-bold text-emerald-400 mb-2">{d.xAxisLabel}</p>
+
+        <p>🟢 Input (KG): {formatNumber(Math.round(inputKG))}</p>
+        <p>🟢 Modeled Capacity (sticks): {formatNumber(d.monthlyCapacity)}</p>
+
+        <div className="border-t border-slate-700 my-2"></div>
+
+        <p>🔴 Exports (sticks): {formatNumber(d.outflow)}</p>
+        <p>🔴 Equivalent KG Used: {formatNumber(Math.round(exportKG))}</p>
+
+        <div className="border-t border-slate-700 my-2"></div>
+
+        <p className="text-red-400">
+          Gap: {formatNumber(d.stampGap)} sticks
+        </p>
+
+        <p className="text-yellow-400">
+          Efficiency: {(100 - wastage).toFixed(1)}%
+        </p>
+      </div>
+    );
   }}
 />
   <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
@@ -352,7 +435,9 @@ const benford = useMemo(() => {
   <Line name="Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={4} dot={{ r: 4, fill: '#ef4444' }} />
 </ComposedChart>
   </ResponsiveContainer>
-<p className="text-[10px] text-slate-500 mt-3 italic">
+<p className="text-[10px] text-slate-400 mt-3 italic whitespace-pre-line">
+  {aiSummary}
+</p>
   {processedData.length > 1
     ? `Exports are ${processedData[processedData.length - 1].cumulativeOutput > processedData[processedData.length - 1].cumulativeInput ? "exceeding" : "within"} modeled capacity. This suggests ${
         processedData[processedData.length - 1].cumulativeOutput > processedData[processedData.length - 1].cumulativeInput
