@@ -438,14 +438,6 @@ const benford = useMemo(() => {
 <p className="text-[10px] text-slate-400 mt-3 italic whitespace-pre-line">
   {aiSummary}
 </p>
-  {processedData.length > 1
-    ? `Exports are ${processedData[processedData.length - 1].cumulativeOutput > processedData[processedData.length - 1].cumulativeInput ? "exceeding" : "within"} modeled capacity. This suggests ${
-        processedData[processedData.length - 1].cumulativeOutput > processedData[processedData.length - 1].cumulativeInput
-          ? "potential external sourcing or undeclared inputs."
-          : "aligned production-output behavior."
-      }`
-    : "Upload data to generate insight."}
-</p>
 </div>
         
 {/* INVENTORY DECAY */}
