@@ -381,7 +381,6 @@ const benford = useMemo(() => {
     Forensic Mass Balance (Smoking Gun)
   </h3>
 
-  {/* ✅ FIX: Dedicated chart height */}
   <div className="h-[320px]">
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart 
@@ -390,67 +389,71 @@ const benford = useMemo(() => {
       >
         <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
   
-  <XAxis
-  dataKey="xAxisLabel"
-  stroke="#e2e8f0"
-  tick={{ fill: "#e2e8f0", fontSize: 11 }}
-  axisLine={{ stroke: "#94a3b8" }}
-  tickLine={{ stroke: "#94a3b8" }}
-/>
+        <XAxis
+          dataKey="xAxisLabel"
+          stroke="#e2e8f0"
+          tick={{ fill: "#e2e8f0", fontSize: 11 }}
+          axisLine={{ stroke: "#94a3b8" }}
+          tickLine={{ stroke: "#94a3b8" }}
+        />
 
-<YAxis
-  stroke="#e2e8f0"
-  tickFormatter={formatNumber}
-  tick={{ fill: "#e2e8f0", fontSize: 11 }}
-  axisLine={{ stroke: "#94a3b8" }}
-  tickLine={{ stroke: "#94a3b8" }}
-/>
+        <YAxis
+          stroke="#e2e8f0"
+          tickFormatter={formatNumber}
+          tick={{ fill: "#e2e8f0", fontSize: 11 }}
+          axisLine={{ stroke: "#94a3b8" }}
+          tickLine={{ stroke: "#94a3b8" }}
+        />
 
-<Tooltip
-  content={({ active, payload }) => {
-    if (!active || !payload || !payload.length) return null;
+        <Tooltip
+          content={({ active, payload }) => {
+            if (!active || !payload || !payload.length) return null;
 
-    const d = payload[0].payload;
+            const d = payload[0].payload;
 
-    const KG_TO_STICKS = 1 / 0.0007;
+            const KG_TO_STICKS = 1 / 0.0007;
+            const inputKG = d.inventoryPool / KG_TO_STICKS;
+            const exportKG = d.exportsKG;
 
-    const inputKG = d.inventoryPool / KG_TO_STICKS; // reverse derived
-    const exportKG = d.exportsKG;
+            return (
+              <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-xs">
+                <p className="font-bold text-emerald-400 mb-2">{d.xAxisLabel}</p>
 
-    return (
-      <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-xs">
-        <p className="font-bold text-emerald-400 mb-2">{d.xAxisLabel}</p>
+                <p>🟢 Input (KG): {formatNumber(Math.round(inputKG))}</p>
+                <p>🟢 Modeled Capacity (sticks): {formatNumber(d.monthlyCapacity)}</p>
 
-        <p>🟢 Input (KG): {formatNumber(Math.round(inputKG))}</p>
-        <p>🟢 Modeled Capacity (sticks): {formatNumber(d.monthlyCapacity)}</p>
+                <div className="border-t border-slate-700 my-2"></div>
 
-        <div className="border-t border-slate-700 my-2"></div>
+                <p>🔴 Exports (sticks): {formatNumber(d.outflow)}</p>
+                <p>🔴 Equivalent KG Used: {formatNumber(Math.round(exportKG))}</p>
 
-        <p>🔴 Exports (sticks): {formatNumber(d.outflow)}</p>
-        <p>🔴 Equivalent KG Used: {formatNumber(Math.round(exportKG))}</p>
+                <div className="border-t border-slate-700 my-2"></div>
 
-        <div className="border-t border-slate-700 my-2"></div>
+                <p className="text-red-400">
+                  Gap: {formatNumber(d.stampGap)} sticks
+                </p>
 
-        <p className="text-red-400">
-          Gap: {formatNumber(d.stampGap)} sticks
-        </p>
+                <p className="text-yellow-400">
+                  Efficiency: {(100 - wastage).toFixed(1)}%
+                </p>
+              </div>
+            );
+          }}
+        />
 
-        <p className="text-yellow-400">
-          Efficiency: {(100 - wastage).toFixed(1)}%
-        </p>
-      </div>
-    );
-  }}
-/>
-  <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
-  
-  <Area name="Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
-  <Line name="Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={4} dot={{ r: 4, fill: '#ef4444' }} />
-</ComposedChart>
-  </ResponsiveContainer>
-<p className="text-[10px] text-slate-400 mt-3 italic whitespace-pre-line">
-  {aiSummary}
-</p>
+        <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
+        
+        <Area name="Capacity" dataKey="cumulativeInput" fill="#10b981" fillOpacity={0.2} stroke="#10b981" />
+        <Line name="Exports" dataKey="cumulativeOutput" stroke="#ef4444" strokeWidth={4} dot={{ r: 4, fill: '#ef4444' }} />
+      
+      </ComposedChart>
+    </ResponsiveContainer>
+  </div>   {/* ✅ THIS WAS MISSING */}
+
+  <p className="text-[10px] text-slate-400 mt-3 italic whitespace-pre-line">
+    {aiSummary}
+  </p>
+
 </div>
         
 {/* INVENTORY DECAY */}
