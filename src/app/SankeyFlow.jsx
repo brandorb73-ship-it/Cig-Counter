@@ -1,203 +1,267 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { Sankey, Tooltip, ResponsiveContainer } from "recharts";
+import { ResponsiveContainer, Sankey, Tooltip, Layer, Rectangle } from "recharts";
 
-// ---------- HELPERS ----------
-const parseNum = (v) => (v ? Number(String(v).replace(/,/g, "")) : 0);
-const KG_TO_STICKS = 1 / 0.0007; // 1kg ≈ 1428 sticks
-const YIELD = 0.95;
-const toSticks = (kg) => (kg > 0 ? kg * KG_TO_STICKS : 0);
+/* =========================
+   NODE RENDERER
+========================= */
+const SankeyNode = ({ x, y, width, height, index, payload, containerWidth }) => {
+  if (x === undefined || isNaN(x)) return null;
+  const isOut = x > containerWidth / 2;
+  return (
+    <Layer key={`node-${index}`}>
+      <Rectangle x={x} y={y} width={width} height={height} fill="#38bdf8" fillOpacity={0.9} rx={2} />
+      <text
+        x={isOut ? x - 10 : x + width + 10}
+        y={y + height / 2}
+        textAnchor={isOut ? "end" : "start"}
+        fontSize={10}
+        fontWeight={800}
+        fill="#fff"
+        dominantBaseline="middle"
+      >
+        {payload.name}
+      </text>
+    </Layer>
+  );
+};
 
-// ---------- TOOLTIP ----------
-const CustomTooltip = ({ active, payload }) => {
+/* =========================
+   TOOLTIP (FIXED)
+========================= */
+const AuditTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
-  if (!d) return null;
+  if (!d || !d.sourceName) return null;
 
-  const gap = Math.round(d.exportSticks - d.precursorSticks);
+  const gap = d.exportSticks - d.precursorSticks;
   const taxLoss = gap > 0 ? gap * 0.15 : 0;
 
   return (
-    <div className="bg-black p-4 border border-gray-700 rounded text-xs">
-      <div className="font-bold text-white mb-1">{d.sourceName} → {d.targetName}</div>
-      <div>Precursor Capacity: {Math.round(d.precursorSticks).toLocaleString()} sticks</div>
-      <div>Actual Output: {Math.round(d.exportSticks).toLocaleString()} sticks</div>
-      <div className={`mt-2 font-bold ${gap > 0 ? "text-red-400" : "text-green-400"}`}>
-        {gap > 0 ? `GAP: ${gap.toLocaleString()} | TAX LOSS: $${taxLoss.toLocaleString()}` : "BALANCED FLOW"}
+    <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl text-[11px] shadow-2xl">
+      <div className="text-emerald-400 font-black mb-2 uppercase italic">Mass Balance Audit</div>
+      <div className="font-bold text-white mb-2 border-b border-slate-800 pb-1">
+        {d.sourceName} → {d.targetName}
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between">
+          <span>Precursor Capacity:</span>
+          <span className="text-emerald-400">
+            {Math.round(d.precursorSticks).toLocaleString()} sticks
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span>Exports:</span>
+          <span className="text-blue-400">
+            {Math.round(d.exportSticks).toLocaleString()} sticks
+          </span>
+        </div>
+
+        <div className={`mt-3 p-2 rounded text-center font-black ${
+          gap > 0 ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-400"
+        }`}>
+          {gap > 0
+            ? `TAX GAP: $${Math.round(taxLoss).toLocaleString()}`
+            : "AUDIT CLEAR"}
+        </div>
       </div>
     </div>
   );
 };
 
-// ---------- MAIN COMPONENT ----------
-export default function InvestigationSankey({ rawData }) {
-  // ----------- DATA LEDGER DEFAULT ----------
-  const defaultLedger = [
-    {
-      Entity: "T********** INC",
-      Tobacco: "173,250",
-      "Tobacco Origin": "BRAZIL",
-      Paper: "0",
-      "Paper Origin": "",
-      Filter: "0",
-      "Filter Origin": "",
-      Tow: "0",
-      "Tow Origin": "",
-      "Cigarette Exports": "171,072",
-      Destination: "SINGAPORE"
-    },
-    {
-      Entity: "T********** INC",
-      Tobacco: "39,600",
-      "Tobacco Origin": "BRAZIL",
-      Paper: "90,312",
-      "Paper Origin": "VIETNAM",
-      Filter: "0",
-      "Filter Origin": "",
-      Tow: "63,686",
-      "Tow Origin": "",
-      "Cigarette Exports": "63,686",
-      Destination: "SINGAPORE"
+/* =========================
+   MAIN COMPONENT
+========================= */
+export default function SankeyFlow({ processedData }) {
+  const { sankeyData, riskLevel, riskFlags, summary } = useMemo(() => {
+    if (!processedData || processedData.length === 0) {
+      return { sankeyData: { nodes: [], links: [] }, riskLevel: "LOW", riskFlags: [], summary: null };
     }
-  ];
 
-  const ledger = rawData && rawData.length ? rawData : defaultLedger;
+    /* ========= CLEAN DATA ========= */
+    const cleanData = processedData.filter(d => {
+      if (!d || Object.values(d).every(v => !v)) return false;
 
-  const { sankeyData, summary } = useMemo(() => {
-    const clean = ledger
-      .filter(d => d && Object.values(d).some(v => v))
-      .map(d => ({
-        hub: d.Entity || "Unknown Hub",
-        tobaccoKG: parseNum(d.Tobacco),
-        paperKG: parseNum(d.Paper),
-        filterKG: parseNum(d.Filter),
-        towKG: parseNum(d.Tow),
-        cigKG: parseNum(d["Cigarette Exports"] || d.outflow),
-        tobaccoOrigin: d["Tobacco Origin"] || "Unknown",
-        paperOrigin: d["Paper Origin"] || "Unknown",
-        filterOrigin: d["Filter Origin"] || "Unknown",
-        towOrigin: d["Tow Origin"] || "Unknown",
-        destination: d.Destination || "Unknown"
-      }));
+      const origin = d.origin || d.Origin;
+      const dest = d.dest || d.Dest || d.Destination;
+      const outflow = d.outflow || d.Outflow;
+
+      return origin && dest && outflow && Number(outflow) > 0;
+    });
 
     const nodes = [];
     const nodeMap = new Map();
-    const linksMap = new Map();
+    const linkMap = new Map();
 
-    const getNode = (name) => {
-      if (!nodeMap.has(name)) {
-        nodeMap.set(name, nodes.length);
-        nodes.push({ name });
+    const addNode = (name, layer) => {
+      const safe = name || "Unknown Entity";
+      const key = `${safe}-L${layer}`;
+      if (!nodeMap.has(key)) {
+        const id = nodes.length;
+        nodes.push({ name: safe, layer });
+        nodeMap.set(key, id);
+        return id;
       }
-      return nodeMap.get(name);
+      return nodeMap.get(key);
     };
 
-    clean.forEach(d => {
-      const hub = d.hub;
-      const dest = d.destination;
+    /* ========= CORE LOOP ========= */
+    cleanData.forEach((d) => {
+      const origin = d.origin || d.Origin || "Unknown";
+      const entity = d.entity || d.Entity || "Production Hub";
+      const dest = d.dest || d.Dest || d.Destination || "Unknown Market";
 
-      const precursorSticks = (toSticks(d.tobaccoKG + d.paperKG + d.filterKG + d.towKG)) * YIELD;
-      const exportSticks = toSticks(d.cigKG);
+      const KG_TO_STICKS = 1 / 0.0007;
+      const YIELD = 0.95;
 
-      const key = `${hub}-${dest}`;
-      if (!linksMap.has(key)) {
-        linksMap.set(key, { sourceName: hub, targetName: dest, precursorSticks: 0, exportSticks: 0 });
-      }
-      const l = linksMap.get(key);
-      l.precursorSticks += precursorSticks;
-      l.exportSticks += exportSticks;
+      const tobaccoKG = Number(d.tobacco) || Number(d.Tobacco) || 0;
+      const cigKG = Number(d.outflow) || Number(d.Outflow) || 0;
+
+      const precursorSticks = tobaccoKG * YIELD * KG_TO_STICKS;
+      const exportSticks = cigKG * KG_TO_STICKS;
+
+      const scaledValue = exportSticks / 1000;
+
+      const s = addNode(origin, 0);
+      const e = addNode(entity, 1);
+      const t = addNode(dest, 2);
+
+      const update = (src, tgt, sName, tName) => {
+        const key = `${src}-${tgt}`;
+        if (!linkMap.has(key)) {
+          linkMap.set(key, {
+            source: src,
+            target: tgt,
+            sourceName: sName,
+            targetName: tName,
+            value: 0,
+            precursorSticks: 0,
+            exportSticks: 0
+          });
+        }
+
+        const l = linkMap.get(key);
+        l.value += scaledValue;
+        l.precursorSticks += precursorSticks;
+        l.exportSticks += exportSticks;
+      };
+
+      update(s, e, origin, entity);
+      update(e, t, entity, dest);
     });
 
-    const links = [];
-    let totalGap = 0;
-    let topCorridor = null;
-    let maxGap = 0;
+    const links = Array.from(linkMap.values()).filter(l => l.value > 0);
 
-    linksMap.forEach(l => {
+    /* ========= FORENSIC TOTALS ========= */
+    const totalPrecursorSticks = links.reduce((a, b) => a + b.precursorSticks, 0) / 2;
+    const totalExportSticks = links.reduce((a, b) => a + b.exportSticks, 0) / 2;
+
+    const capacity = totalPrecursorSticks;
+    const stampGap = totalExportSticks - capacity;
+    const estTaxLoss = stampGap > 0 ? stampGap * 0.15 : 0;
+
+    /* ========= RISK FLAGS ========= */
+    const flags = [];
+    if (stampGap > 10000) flags.push({ msg: `Critical Stamp Gap: ${Math.round(stampGap).toLocaleString()} undeclared sticks.`, type: "CRITICAL" });
+    if (capacity > totalExportSticks * 1.5) flags.push({ msg: "High Stockpiling detected.", type: "HIGH" });
+
+    /* ========= TOP CORRIDOR ========= */
+    const topLink = links.reduce((max, l) => {
       const gap = l.exportSticks - l.precursorSticks;
-      totalGap += gap > 0 ? gap : 0;
-      if (gap > maxGap) {
-        maxGap = gap;
-        topCorridor = `${l.sourceName} → ${l.targetName}`;
-      }
-      let color = "#22c55e"; // green
-      if (gap > 1_000_000) color = "#ef4444"; // red
-      else if (gap > 100_000) color = "#f97316"; // orange
+      return gap > (max?.gap || 0) ? { ...l, gap } : max;
+    }, null);
 
-      links.push({
-        source: getNode(l.sourceName),
-        target: getNode(l.targetName),
-        value: Math.max(l.exportSticks, 1),
-        sourceName: l.sourceName,
-        targetName: l.targetName,
-        precursorSticks: l.precursorSticks,
-        exportSticks: l.exportSticks,
-        stroke: color
-      });
-    });
+    /* ========= RISK TYPE ========= */
+    let riskType = "BALANCED";
+    if (stampGap > 0 && totalExportSticks > capacity * 1.2) riskType = "UNDER_DECLARATION";
+    else if (capacity > totalExportSticks * 1.5) riskType = "STOCKPILING";
+    else if (stampGap > 0) riskType = "DIVERSION";
+
+    /* ========= SEVERITY ========= */
+    let severity = "LOW";
+    if (estTaxLoss > 1000000) severity = "CRITICAL";
+    else if (estTaxLoss > 250000) severity = "HIGH";
+    else if (estTaxLoss > 50000) severity = "MEDIUM";
 
     return {
       sankeyData: { nodes, links },
+      riskLevel: severity,
+      riskFlags: flags,
       summary: {
-        totalSticks: links.reduce((sum, l) => sum + l.exportSticks, 0),
-        totalPrecursors: links.reduce((sum, l) => sum + l.precursorSticks, 0),
-        totalGap,
-        topCorridor,
-        severity: totalGap > 1_000_000 ? "CRITICAL" : totalGap > 100_000 ? "HIGH" : totalGap > 0 ? "MEDIUM" : "LOW",
-        riskType: links.every(l => l.exportSticks <= l.precursorSticks)
-          ? "BALANCED"
-          : links.some(l => l.exportSticks > l.precursorSticks * 1.2)
-          ? "UNDER_DECLARATION"
-          : links.some(l => l.exportSticks < l.precursorSticks * 0.8)
-          ? "STOCKPILING"
-          : "DIVERSION"
-      }
+        hub: cleanData[0]?.entity || "Main Hub",
+        destinations: [...new Set(cleanData.map(d => d.dest || d.Dest || d.Destination))],
+        totalSticks: totalExportSticks,
+        taxLoss: estTaxLoss,
+        capacity,
+        riskType,
+        severity,
+        topCorridor: topLink ? `${topLink.sourceName} → ${topLink.targetName}` : null
+      },
     };
-  }, [ledger]);
+  }, [processedData]);
 
-  if (!sankeyData.nodes.length || !sankeyData.links.length) {
-    return <div className="text-red-400 p-4">⚠️ No valid Sankey data — check CSV</div>;
-  }
+  if (!sankeyData.nodes.length) return <div className="p-10 text-slate-500">Mapping Forensic Flow...</div>;
 
   return (
-    <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-      <h3 className="text-sm text-white mb-2 font-bold">Investigation Flow: Origin → Hub → Destination</h3>
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[700px] flex flex-col">
 
-      <ResponsiveContainer width="100%" height={500}>
-        <Sankey
-          data={sankeyData}
-          nodePadding={25}
-          link={{ strokeOpacity: 0.4 }}
-        >
-          <Tooltip content={<CustomTooltip />} />
-        </Sankey>
-      </ResponsiveContainer>
+      {/* HEADER */}
+      <div className="flex justify-between mb-6">
+        <h3 className="text-xs text-slate-400 uppercase font-black tracking-widest">
+          Revenue Protection Monitor
+        </h3>
+        <div className="px-4 py-1 border text-[10px] font-black rounded text-red-500 border-red-500">
+          {riskLevel} RISK
+        </div>
+      </div>
 
-      {/* ---------------- AI SUMMARY ---------------- */}
-      <div className="mt-4 p-3 bg-blue-500/5 border border-blue-500/20 rounded text-[11px] text-slate-400 italic">
-        <strong className="text-blue-400 not-italic">AI Forensic Summary:</strong>{" "}
-        {summary.totalGap > 0 ? (
-          <>
-            Detected a discrepancy of <strong>{Math.round(summary.totalGap).toLocaleString()} sticks</strong>{" "}
-            between precursor capacity and reported exports.{" "}
-            <strong className={`font-black ${
-              summary.severity === "CRITICAL"
-                ? "text-red-500"
-                : summary.severity === "HIGH"
-                ? "text-orange-400"
-                : summary.severity === "MEDIUM"
-                ? "text-yellow-400"
-                : "text-emerald-400"
-            }`}>[{summary.severity} RISK]</strong>
-            {" "}Highest-risk corridor: <strong className="text-red-400">{summary.topCorridor}</strong>.{" "}
-            {summary.riskType === "UNDER_DECLARATION" && "Exports exceed feasible production capacity; possible under-declaration."}
-            {summary.riskType === "STOCKPILING" && "Precursor inputs exceed outputs; potential stockpiling or delayed distribution."}
-            {summary.riskType === "DIVERSION" && "Gap suggests possible diversion to unregulated markets."}
-          </>
-        ) : (
-          <>Precursors and exports are balanced; no significant anomalies detected.</>
-        )}
+      {/* SANKEY */}
+      <div className="flex-grow">
+        <ResponsiveContainer width="100%" height="100%">
+          <Sankey
+            data={sankeyData}
+            nodePadding={40}
+            node={<SankeyNode />}
+            link={{ stroke: "#38bdf8", strokeOpacity: 0.25 }}
+          >
+            <Tooltip content={<AuditTooltip />} />
+          </Sankey>
+        </ResponsiveContainer>
+      </div>
+
+      {/* FLAGS */}
+      <div className="mt-6 space-y-2">
+        {riskFlags.map((f, i) => (
+          <div key={i} className="p-2 bg-black/40 border border-slate-800 rounded text-[11px]">
+            <span className="text-red-500 font-bold">[{f.type}]</span> {f.msg}
+          </div>
+        ))}
+
+        {/* SUMMARY */}
+        <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded text-[11px] text-slate-400 italic">
+          <strong className="text-blue-400 not-italic">AI Forensic Summary:</strong>{" "}
+          The hub <strong className="text-white">{summary?.hub}</strong> supplied{" "}
+          <strong className="text-white">{summary?.destinations?.slice(0, 3).join(", ")}</strong>, processing{" "}
+          <strong className="text-white">{Math.round(summary?.totalSticks).toLocaleString()} sticks</strong>.{" "}
+
+          <span className="text-red-400 font-bold">[{summary?.severity}]</span>{" "}
+
+          {summary?.riskType === "UNDER_DECLARATION" && "Output exceeds feasible capacity — likely under-declaration."}
+          {summary?.riskType === "STOCKPILING" && "Excess precursor indicates stockpiling behaviour."}
+          {summary?.riskType === "DIVERSION" && "Mismatch suggests diversion to unregulated markets."}
+          {summary?.riskType === "BALANCED" && "No material discrepancy detected."}
+
+          {summary?.topCorridor && (
+            <> Highest risk corridor: <strong className="text-red-400">{summary.topCorridor}</strong>.</>
+          )}
+
+          {summary?.taxLoss > 0 && (
+            <> Estimated tax exposure: <strong className="text-red-500">${summary.taxLoss.toLocaleString()}</strong>.</>
+          )}
+        </div>
       </div>
     </div>
   );
