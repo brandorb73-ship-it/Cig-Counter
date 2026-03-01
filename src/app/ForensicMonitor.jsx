@@ -53,6 +53,7 @@ const fetchCSV = async () => {
         cleanNumeric(r["Filter"]),
 
       exports: cleanNumeric(r["Cigarette Exports"]),
+exportUnit: (r["Cigarette Unit"] || "KG").toUpperCase(),
 
       // ✅ FIXED — use actual column names
       origin:
@@ -131,7 +132,14 @@ grouped[key].exports += n(d.exports);
 const inputCapacity = (d.inventoryPool * eff) / 0.0007;
 
 invPool = invPool + inputCapacity - (invPool * 0.02);
-cumOut += d.exports;
+const KG_PER_STICK = 0.0007;
+
+const exportsInSticks =
+  d.exportUnit === "KG"
+    ? d.exports / KG_PER_STICK
+    : d.exports;
+
+cumOut += exportsInSticks;
 
     // ✅ BENFORD (Fixed Digit Extraction)
     const firstDigit = d.exports > 0 ? parseInt(String(Math.floor(d.exports))[0]) : 0;
@@ -148,7 +156,8 @@ cumOut += d.exports;
       cumulativeOutput: Math.round(cumOut),
 inventoryPool: Math.round(invPool),
 monthlyCapacity: Math.round(inputCapacity),
-      outflow: Math.round(d.exports),
+      outflow: Math.round(exportsInSticks),
+exportsKG: d.exportUnit === "KG" ? d.exports : d.exports * KG_PER_STICK,
       stampGap: Math.round(stampGap),
       pdi: Math.round(pdi),
       transitRiskScore,
@@ -366,7 +375,7 @@ const benford = useMemo(() => {
 </div>
         
 {/* ✅ SMOKING GUN: CUMULATIVE FLOW */}
-<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[450px]">
+<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
   <h3 className="text-sm font-bold mb-4 uppercase text-slate-400 tracking-widest">
     Forensic Mass Balance (Smoking Gun)
   </h3>
@@ -402,7 +411,7 @@ const benford = useMemo(() => {
     const KG_TO_STICKS = 1 / 0.0007;
 
     const inputKG = d.inventoryPool / KG_TO_STICKS; // reverse derived
-    const exportKG = d.outflow * 0.0007;
+    const exportKG = d.exportsKG;
 
     return (
       <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-xs">
