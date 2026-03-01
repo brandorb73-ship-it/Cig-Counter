@@ -376,15 +376,19 @@ const benford = useMemo(() => {
         
 {/* ✅ SMOKING GUN: CUMULATIVE FLOW */}
 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+  
   <h3 className="text-sm font-bold mb-4 uppercase text-slate-400 tracking-widest">
     Forensic Mass Balance (Smoking Gun)
   </h3>
-  <ResponsiveContainer width="100%" height="90%">
-   <ComposedChart 
-  data={processedData} 
-  margin={{ top: 20, right: 30, left: 40, bottom: 60 }} // ✅ Extra bottom margin for X-Axis labels
->
-<CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+
+  {/* ✅ FIX: Dedicated chart height */}
+  <div className="h-[320px]">
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart 
+        data={processedData} 
+        margin={{ top: 20, right: 30, left: 40, bottom: 60 }}
+      >
+        <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
   
   <XAxis
   dataKey="xAxisLabel"
