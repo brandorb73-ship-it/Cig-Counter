@@ -132,12 +132,17 @@ grouped[key].exports += n(d.exports);
 const inputCapacity = (d.inventoryPool * eff) / 0.0007;
 
 invPool = invPool + inputCapacity - (invPool * 0.02);
+
 const KG_PER_STICK = 0.0007;
 
-const exportsInSticks =
-  d.exportUnit === "KG"
-    ? d.exports / KG_PER_STICK
-    : d.exports;
+// ✅ ALWAYS treat raw CSV as KG
+const exportKG = d.exports;
+
+// ✅ Convert ONCE → sticks
+const exportsInSticks = exportKG / KG_PER_STICK;
+
+// ✅ accumulate in sticks (for model integrity)
+cumOut += exportsInSticks;
 
 cumOut += exportsInSticks;
 
@@ -156,8 +161,8 @@ cumOut += exportsInSticks;
       cumulativeOutput: Math.round(cumOut),
 inventoryPool: Math.round(invPool),
 monthlyCapacity: Math.round(inputCapacity),
-      outflow: Math.round(exportsInSticks),
-exportsKG: d.exportUnit === "KG" ? d.exports : d.exports * KG_PER_STICK,
+      outflow: Math.round(exportsInSticks), // sticks (for chart)
+exportsKG: Math.round(exportKG),      // kg (truth source)
       stampGap: Math.round(stampGap),
       pdi: Math.round(pdi),
       transitRiskScore,
@@ -424,8 +429,8 @@ const benford = useMemo(() => {
 
                 <div className="border-t border-slate-700 my-2"></div>
 
-                <p>🔴 Exports (sticks): {formatNumber(d.outflow)}</p>
-                <p>🔴 Equivalent KG Used: {formatNumber(Math.round(exportKG))}</p>
+                <p>🔴 Exports (KG): {formatNumber(d.exportsKG)}</p>
+                <p>🔴 Equivalent Sticks: {formatNumber(d.outflow)}</p>
 
                 <div className="border-t border-slate-700 my-2"></div>
 
@@ -450,9 +455,9 @@ const benford = useMemo(() => {
     </ResponsiveContainer>
   </div>   {/* ✅ THIS WAS MISSING */}
 
-  <p className="text-[10px] text-slate-400 mt-3 italic whitespace-pre-line">
-    {aiSummary}
-  </p>
+<p className="text-sm text-emerald-300 mt-4 leading-relaxed whitespace-pre-line font-medium">
+  {aiSummary}
+</p>
 
 </div>
         
