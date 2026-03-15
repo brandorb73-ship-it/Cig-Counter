@@ -515,7 +515,9 @@ const benford = useMemo(() => {
 
 <p className="text-sm text-emerald-300 mt-4 leading-relaxed whitespace-pre-line font-medium">
   {aiSummary}
-const illicitScore = useMemo(() => {
+</p>
+
+  const illicitScore = useMemo(() => {
   if (!processedData.length) return 0;
 
   const latest = processedData[processedData.length - 1];
@@ -534,7 +536,6 @@ const illicitScore = useMemo(() => {
 
   return Math.min(100, score);
 }, [processedData, anomalies]);
-</p>
 <div className="mt-5">
   <p className="text-xs text-slate-400 uppercase tracking-widest">
     Illicit Production Probability
