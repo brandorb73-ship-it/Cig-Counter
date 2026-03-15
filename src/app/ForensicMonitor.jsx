@@ -542,21 +542,12 @@ const benford = useMemo(() => {
         x1={d.xAxisLabel}
         x2={d.xAxisLabel}
         stroke="none"
-        fill="rgba(239,68,68,0.15)"
+        fill="rgba(239,68,68,0.15)" // Red vertical band for anomalies
       />
     );
   }
   return null;
 })}
-    <ReferenceArea
-      key={i}
-      x1={d.xAxisLabel}
-      x2={d.xAxisLabel}
-      stroke="none"
-      fill="rgba(239,68,68,0.15)"
-    />
-  ) : null
-)}
         <Area
   name="Capacity"
   dataKey={unitView === "kg" ? "inventoryPool" : "cumulativeInput"}
