@@ -132,7 +132,12 @@ grouped[key].exports += n(d.exports);
     const eff = (100 - wastage) / 100;
     
     // ✅ CORE MATH (Using Aggregated Values)
-const inputCapacity = (d.inventoryPool * eff) / 0.0007;
+const KG_PER_STICK = 0.0007;
+
+// ✅ Tobacco-only production model
+const tobaccoKG = d.tobacco;
+
+const inputCapacity = (tobaccoKG * eff) / KG_PER_STICK;
 
 invPool = invPool + inputCapacity - (invPool * 0.02);
 
@@ -163,6 +168,7 @@ cumOut += exportsInSticks;
       cumulativeInput: Math.round(invPool),
       cumulativeOutput: Math.round(cumOut),
 inventoryPool: Math.round(invPool),
+tobaccoInput: Math.round(d.tobacco),
 monthlyCapacity: Math.round(inputCapacity),
       outflow: Math.round(exportsInSticks), // sticks (for chart)
 exportsKG: Math.round(exportKG),      // kg (truth source)
@@ -229,6 +235,41 @@ const anomalies = useMemo(() => {
   });
 }, [processedData]);
 
+  // 🚨 Ghost Production Detection
+const ghostMonths = useMemo(() => {
+  return processedData.filter(d =>
+    d.exportsKG > 0 && d.tobaccoInput < 50
+  );
+}, [processedData]);
+
+  // 🚨 Illicit Factory Detection
+const illicitFactoryMonths = useMemo(() => {
+  return processedData.filter(d =>
+    d.outflow > d.monthlyCapacity * 1.1
+  );
+}, [processedData]);
+
+  // 🚨 Estimated Illicit Production
+const illicitProduction = useMemo(() => {
+
+  if (!processedData.length) return 0;
+
+  let totalIllicit = 0;
+
+  processedData.forEach(d => {
+
+    const excess = d.outflow - d.monthlyCapacity;
+
+    if (excess > 0) {
+      totalIllicit += excess;
+    }
+
+  });
+
+  return Math.round(totalIllicit);
+
+}, [processedData]);
+  
   const illicitScore = useMemo(() => {
   if (!processedData.length) return 0;
 
@@ -469,7 +510,7 @@ const benford = useMemo(() => {
               <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-xs">
                 <p className="font-bold text-emerald-400 mb-2">{d.xAxisLabel}</p>
 
-                <p>🟢 Input (KG): {formatNumber(Math.round(inputKG))}</p>
+                <p>🟢 Tobacco Input (KG): {formatNumber(d.tobaccoInput)}</p>
                 <p>🟢 Modeled Capacity (sticks): {formatNumber(d.monthlyCapacity)}</p>
 
                 <div className="border-t border-slate-700 my-2"></div>
@@ -492,8 +533,33 @@ const benford = useMemo(() => {
         />
 
         <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
-        {processedData.map((d, i) =>
-  d.cumulativeOutput > d.cumulativeInput ? (
+{/* 🚨 RISK MONTH HIGHLIGHT BANDS */}
+{processedData.map((d, i) => {
+
+  const isAnomaly = anomalies.find(a => a.xAxisLabel === d.xAxisLabel);
+  const isGhost = ghostMonths.find(g => g.xAxisLabel === d.xAxisLabel);
+  const isFactory = illicitFactoryMonths.find(f => f.xAxisLabel === d.xAxisLabel);
+
+  if (isAnomaly || isGhost || isFactory) {
+    return (
+      <ReferenceArea
+        key={i}
+        x1={d.xAxisLabel}
+        x2={d.xAxisLabel}
+        stroke="none"
+        fill={
+          isFactory
+            ? "rgba(220,38,38,0.35)"
+            : isGhost
+            ? "rgba(234,179,8,0.35)"
+            : "rgba(239,68,68,0.25)"
+        }
+      />
+    );
+  }
+
+  return null;
+})}
     <ReferenceArea
       key={i}
       x1={d.xAxisLabel}
@@ -552,7 +618,12 @@ const benford = useMemo(() => {
           fontSize={10}
           textAnchor="middle"
         >
-          +{pct}% Export Spike – {d.xAxisLabel}
+          {isGhost
+  ? `⚠ Ghost Production – ${d.xAxisLabel}`
+  : isFactory
+  ? `⚠ Illicit Factory Signal – ${d.xAxisLabel}`
+  : `+${pct}% Export Spike – ${d.xAxisLabel}`
+}
         </text>
       );
     }}
