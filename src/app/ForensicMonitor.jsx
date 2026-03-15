@@ -251,6 +251,8 @@ const anomalies = useMemo(() => {
   
 const aiSummary = useMemo(() => {
   if (!processedData.length) return "Upload data to generate forensic insight.";
+
+  const latest = processedData[processedData.length - 1]; 
   
   const gap = latest.stampGap;
   const integrity =
