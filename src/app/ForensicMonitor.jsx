@@ -128,11 +128,13 @@ const processedData = useMemo(() => {
 
   return sorted.map((d) => {
 
-    const efficiency = (100 - wastage) / 100;
+    Efficiency assumption: ${100 - wastage}% based on ${wastage}% wastage factor.
 
     // Production capacity
-    const monthlyCapacitySticks =
-      (d.tobacco * efficiency) / KG_PER_STICK;
+const usableTobacco = d.tobacco * efficiency * 0.88;
+
+const monthlyCapacitySticks =
+  usableTobacco / KG_PER_STICK;
 
     cumulativeInputSticks =
       cumulativeInputSticks + monthlyCapacitySticks -
@@ -157,26 +159,40 @@ const processedData = useMemo(() => {
         ? parseInt(String(Math.floor(d.exports))[0])
         : 0;
 
-    return {
-      ...d,
+illicitZone: Math.max(
+  0,
+  Math.round(cumulativeOutputSticks - cumulativeInputSticks)
+),
+capacityUpper: Math.round(cumulativeInputSticks * 1.1),
+capacityLower: Math.round(cumulativeInputSticks * 0.9),
+return {
+  ...d,
 
-      xAxisLabel: `${(d.month || "").substring(0,3)} ${d.year}`,
+  xAxisLabel: `${(d.month || "").substring(0,3)} ${d.year}`,
 
-      // ORIGINAL KG VALUES
-      tobaccoInputKG: Math.round(d.tobacco),
-      exportsKG: Math.round(d.exports),
+  tobaccoInputKG: Math.round(d.tobacco),
+  exportsKG: Math.round(d.exports),
 
-      // STICK MODEL
-      monthlyCapacity: Math.round(monthlyCapacitySticks),
-      outflow: Math.round(exportsSticks),
+  monthlyCapacity: Math.round(monthlyCapacitySticks),
 
-      cumulativeInput: Math.round(cumulativeInputSticks),
-      cumulativeOutput: Math.round(cumulativeOutputSticks),
+  cumulativeInput: Math.round(cumulativeInputSticks),
+  cumulativeOutput: Math.round(cumulativeOutputSticks),
 
-      stampGap: Math.round(stampGap),
-      pdi: Math.round(pdi),
-      firstDigit
-    };
+  capacityUpper: Math.round(cumulativeInputSticks * 1.1),
+  capacityLower: Math.round(cumulativeInputSticks * 0.9),
+
+  illicitOutput: Math.max(
+    0,
+    Math.round(cumulativeOutputSticks - cumulativeInputSticks)
+  ),
+   illicitZone: Math.max(
+    0,
+    Math.round(cumulativeOutputSticks - cumulativeInputSticks)
+  ),
+  stampGap: Math.round(stampGap),
+  pdi: Math.round(pdi),
+  firstDigit
+};
 
   });
 
@@ -251,6 +267,31 @@ const illicitFactoryMonths = useMemo(() => {
   );
 }, [processedData]);
 
+const investigationFlags = useMemo(() => {
+
+  if (!processedData.length) return [];
+
+  const flags = [];
+
+  processedData.forEach((d) => {
+
+    if (d.exportsKG > 0 && d.tobaccoInputKG < 50) {
+      flags.push(`Ghost Production detected in ${d.xAxisLabel}`);
+    }
+
+    if (d.cumulativeOutput > d.cumulativeInput * 1.1) {
+      flags.push(`Illicit factory signal in ${d.xAxisLabel}`);
+    }
+
+  });
+
+  if (anomalies.length > 0) {
+    flags.push(`${anomalies.length} abnormal export spikes detected`);
+  }
+
+  return flags;
+
+}, [processedData, anomalies]);
   // 🚨 Estimated Illicit Production
 const illicitProduction = useMemo(() => {
 
@@ -260,7 +301,7 @@ const illicitProduction = useMemo(() => {
 
   processedData.forEach(d => {
 
-    const excess = d.outflow - d.monthlyCapacity;
+const excess = d.outflow - d.monthlyCapacity;
 
     if (excess > 0) {
       totalIllicit += excess;
@@ -334,7 +375,15 @@ ${riskLevel} FORENSIC SIGNAL
       ? "cooling shipment patterns"
       : "no strong directional shift"
   }.
+• Production efficiency assumption: ${100 - wastage}% based on ${wastage}% wastage factor.
 
+• ${anomalyCount} abnormal shipment spikes detected, indicating sudden export surges.
+
+${
+illicitFactoryMonths.length > 0
+? `• ${illicitFactoryMonths.length} months show exports exceeding modeled production capacity, suggesting possible undeclared manufacturing, external sourcing, or illicit production activity.`
+: ""
+}
 • ${anomalyCount} abnormal shipment spikes detected.
 
 ${
@@ -507,14 +556,22 @@ const benford = useMemo(() => {
             const KG_TO_STICKS = 1 / 0.0007;
             const inputKG = d.inventoryPool / KG_TO_STICKS;
             const exportKG = d.exportsKG;
-
+<Line
+  name="Estimated Illicit Production"
+  dataKey="illicitOutput"
+  stroke="#facc15"
+  strokeWidth={3}
+  dot={false}
+/>
             return (
               <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-xs">
                 <p className="font-bold text-emerald-400 mb-2">{d.xAxisLabel}</p>
 
 <p>🟢 Tobacco Input: {formatNumber(d.tobaccoInputKG)} KG</p>
 <p>🟢 Capacity: {formatNumber(d.monthlyCapacity)} sticks</p>
-
+<p className="text-slate-400">
+Capacity tolerance: ±10% confidence band
+</p>
 <div className="border-t border-slate-700 my-2"></div>
 
 <p>🔴 Exports: {formatNumber(d.exportsKG)} KG</p>
@@ -525,7 +582,9 @@ const benford = useMemo(() => {
 <p className="text-red-400">
 Gap: {formatNumber(d.stampGap)} sticks
 </p>
-
+<p className="text-red-500 font-semibold">
+Illicit production: {formatNumber(d.illicitOutput)} sticks
+</p>
                 <p className="text-yellow-400">
                   Efficiency: {(100 - wastage).toFixed(1)}%
                 </p>
@@ -550,6 +609,14 @@ Gap: {formatNumber(d.stampGap)} sticks
   }
   return null;
 })}
+
+        <Area
+  name="Capacity Confidence Range"
+  dataKey="capacityUpper"
+  stroke="none"
+  fill="#22c55e"
+  fillOpacity={0.08}
+/>
         <Area
   name="Capacity"
   dataKey={unitView === "kg" ? "tobaccoInputKG" : "cumulativeInput"}
@@ -557,7 +624,13 @@ Gap: {formatNumber(d.stampGap)} sticks
   fillOpacity={0.2}
   stroke="#10b981"
 />
-
+<Area
+  name="Illicit Production Zone"
+  dataKey="illicitZone"
+  fill="#ef4444"
+  fillOpacity={0.25}
+  stroke="none"
+/>
 <Line
   name="Exports"
   dataKey={unitView === "kg" ? "exportsKG" : "cumulativeOutput"}
@@ -577,25 +650,36 @@ Gap: {formatNumber(d.stampGap)} sticks
     return <circle cx={cx} cy={cy} r={3} fill="#ef4444" />;
   }}
 >
- <LabelList
-  dataKey="outflow"
+<LabelList
+  dataKey="cumulativeOutput"
   content={(props) => {
+
     const { x, y, index } = props;
 
     const d = processedData[index];
     const prev = processedData[index - 1];
-    if (!prev) return null;
 
-    const spike = anomalies.find(a => a.xAxisLabel === d.xAxisLabel);
-    if (!spike) return null;
+    if (!d) return null;
 
-    const pct = Math.round(((d.outflow - prev.outflow) / prev.outflow) * 100);
-
-    // ✅ DEFINE FLAGS HERE
     const isGhost = d.exportsKG > 0 && d.tobaccoInputKG < 50;
 
     const isFactory =
       d.cumulativeOutput > d.cumulativeInput * 1.1;
+
+    let label = "";
+
+    if (isGhost) {
+      label = "⚠ Ghost Production";
+    }
+    else if (isFactory) {
+      label = "⚠ Illicit Production";
+    }
+    else if (prev && d.outflow > prev.outflow * 2) {
+      const pct = Math.round(((d.outflow - prev.outflow) / prev.outflow) * 100);
+      label = `+${pct}% Spike`;
+    }
+
+    if (!label) return null;
 
     return (
       <text
@@ -605,11 +689,7 @@ Gap: {formatNumber(d.stampGap)} sticks
         fontSize={10}
         textAnchor="middle"
       >
-        {isGhost
-          ? `⚠ Ghost Production`
-          : isFactory
-          ? `⚠ Illicit Factory`
-          : `+${pct}% Spike`}
+        {label}
       </text>
     );
   }}
@@ -623,6 +703,20 @@ Gap: {formatNumber(d.stampGap)} sticks
 <p className="text-sm text-slate-200 mt-4 leading-relaxed whitespace-pre-line font-medium">
   {aiSummary}
 </p>
+
+  <div className="bg-black border border-yellow-900/40 rounded-xl p-4 text-xs space-y-1 mt-4">
+  <h4 className="text-yellow-400 font-bold uppercase tracking-widest">
+    Investigation Flags
+  </h4>
+
+  {investigationFlags.map((f,i)=>(
+    <p key={i}>⚠ {f}</p>
+  ))}
+
+  {investigationFlags.length === 0 && (
+    <p className="text-emerald-400">✓ No investigation flags triggered</p>
+  )}
+</div>
 <div className="mt-5">
   <p className="text-xs text-slate-400 uppercase tracking-widest">
     Illicit Production Probability
@@ -661,7 +755,12 @@ Gap: {formatNumber(d.stampGap)} sticks
 
       <tbody>
         {processedData.map((d,i)=>(
-          <tr key={i} className="border-b border-slate-800">
+          <tr
+  key={i}
+  className={`border-b border-slate-800 ${
+    d.cumulativeOutput > d.cumulativeInput ? "bg-red-900/20" : ""
+  }`}
+>
             <td className="py-2">{d.xAxisLabel}</td>
 
             <td>{formatNumber(d.tobaccoInputKG)}</td>
@@ -722,7 +821,7 @@ Gap: {formatNumber(d.stampGap)} sticks
   }}
 />
 
-      <Line dataKey="inventoryPool" stroke="#f59e0b" strokeWidth={3} dot={false} />
+      <Line dataKey="cumulativeInput" stroke="#f59e0b" strokeWidth={3} dot={false} />
     </LineChart>
   </ResponsiveContainer>
 <p className="text-[10px] text-slate-500 mt-3 italic">
