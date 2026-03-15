@@ -513,7 +513,7 @@ const benford = useMemo(() => {
     </ResponsiveContainer>
   </div>   {/* ✅ THIS WAS MISSING */}
 
-<p className="text-sm text-emerald-300 mt-4 leading-relaxed whitespace-pre-line font-medium">
+<p className="text-sm text-slate-200 mt-4 leading-relaxed whitespace-pre-line font-medium">
   {aiSummary}
 </p>
 
