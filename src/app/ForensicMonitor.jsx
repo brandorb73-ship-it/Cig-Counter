@@ -12,6 +12,7 @@ import SankeyFlow from "./SankeyFlow";
 import RiskRanking from "./RiskRanking";
 import OriginDestinationPanel from "./OriginDestinationPanel";
 import { LabelList } from "recharts";
+import { ReferenceArea } from "recharts";
 
 export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
@@ -228,10 +229,7 @@ const anomalies = useMemo(() => {
   });
 }, [processedData]);
 
-const aiSummary = useMemo(() => {
-  if (!processedData.length) return "Upload data to generate forensic insight.";
-
-   const illicitScore = useMemo(() => {
+  const illicitScore = useMemo(() => {
   if (!processedData.length) return 0;
 
   const latest = processedData[processedData.length - 1];
@@ -250,7 +248,10 @@ const aiSummary = useMemo(() => {
 
   return Math.min(100, score);
 }, [processedData, anomalies]);
-
+  
+const aiSummary = useMemo(() => {
+  if (!processedData.length) return "Upload data to generate forensic insight.";
+  
   const gap = latest.stampGap;
   const integrity =
     latest.cumulativeInput > 0
