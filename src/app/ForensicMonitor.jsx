@@ -577,38 +577,43 @@ Gap: {formatNumber(d.stampGap)} sticks
     return <circle cx={cx} cy={cy} r={3} fill="#ef4444" />;
   }}
 >
-  <LabelList
-    dataKey="outflow"
-    content={(props) => {
-      const { x, y, value, index } = props;
-      const d = processedData[index];
+ <LabelList
+  dataKey="outflow"
+  content={(props) => {
+    const { x, y, index } = props;
 
-      const prev = processedData[index - 1];
-      if (!prev) return null;
+    const d = processedData[index];
+    const prev = processedData[index - 1];
+    if (!prev) return null;
 
-      const spike = anomalies.find(a => a.xAxisLabel === d.xAxisLabel);
-      if (!spike) return null;
+    const spike = anomalies.find(a => a.xAxisLabel === d.xAxisLabel);
+    if (!spike) return null;
 
-      const pct = Math.round(((d.outflow - prev.outflow) / prev.outflow) * 100);
+    const pct = Math.round(((d.outflow - prev.outflow) / prev.outflow) * 100);
 
-      return (
-        <text
-          x={x}
-          y={y - 12}
-          fill="#facc15"
-          fontSize={10}
-          textAnchor="middle"
-        >
-          {isGhost
-  ? `⚠ Ghost Production – ${d.xAxisLabel}`
-  : isFactory
-  ? `⚠ Illicit Factory Signal – ${d.xAxisLabel}`
-  : `+${pct}% Export Spike – ${d.xAxisLabel}`
-}
-        </text>
-      );
-    }}
-  />
+    // ✅ DEFINE FLAGS HERE
+    const isGhost = d.exportsKG > 0 && d.tobaccoInputKG < 50;
+
+    const isFactory =
+      d.cumulativeOutput > d.cumulativeInput * 1.1;
+
+    return (
+      <text
+        x={x}
+        y={y - 12}
+        fill="#facc15"
+        fontSize={10}
+        textAnchor="middle"
+      >
+        {isGhost
+          ? `⚠ Ghost Production`
+          : isFactory
+          ? `⚠ Illicit Factory`
+          : `+${pct}% Spike`}
+      </text>
+    );
+  }}
+/>
 </Line>
        
       </ComposedChart>
@@ -635,7 +640,51 @@ Gap: {formatNumber(d.stampGap)} sticks
   </p>
 </div>
 </div>
-        
+{/* FORENSIC LEDGER TABLE */}
+<div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+  <h3 className="text-xs font-bold uppercase text-slate-400 mb-4">
+    Forensic Data Ledger
+  </h3>
+
+  <div className="overflow-auto max-h-[320px]">
+    <table className="w-full text-xs text-left">
+      <thead className="text-slate-400 border-b border-slate-700">
+        <tr>
+          <th className="py-2">Month</th>
+          <th>Tobacco (KG)</th>
+          <th>Exports (KG)</th>
+          <th>Capacity (sticks)</th>
+          <th>Exports (sticks)</th>
+          <th>Gap</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {processedData.map((d,i)=>(
+          <tr key={i} className="border-b border-slate-800">
+            <td className="py-2">{d.xAxisLabel}</td>
+
+            <td>{formatNumber(d.tobaccoInputKG)}</td>
+
+            <td>{formatNumber(d.exportsKG)}</td>
+
+            <td>{formatNumber(d.monthlyCapacity)}</td>
+
+            <td>{formatNumber(d.outflow)}</td>
+
+            <td className="text-red-400">
+              {formatNumber(d.stampGap)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <p className="text-[10px] text-slate-500 mt-3 italic">
+    Transaction-level forensic ledger showing modeled production capacity vs declared export flows.
+  </p>
+</div>
 {/* INVENTORY DECAY */}
 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[400px]">
   <h3 className="text-xs font-bold uppercase text-slate-400 mb-6">
