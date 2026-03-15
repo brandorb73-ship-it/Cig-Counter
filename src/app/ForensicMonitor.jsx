@@ -245,7 +245,7 @@ const ghostMonths = useMemo(() => {
   // 🚨 Illicit Factory Detection
 const illicitFactoryMonths = useMemo(() => {
   return processedData.filter(d =>
-    d.outflow > d.monthlyCapacity * 1.1
+    d.cumulativeOutput > d.cumulativeInput * 1.1
   );
 }, [processedData]);
 
@@ -535,29 +535,17 @@ const benford = useMemo(() => {
         <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
 {/* 🚨 RISK MONTH HIGHLIGHT BANDS */}
 {processedData.map((d, i) => {
-
-  const isAnomaly = anomalies.find(a => a.xAxisLabel === d.xAxisLabel);
-  const isGhost = ghostMonths.find(g => g.xAxisLabel === d.xAxisLabel);
-  const isFactory = illicitFactoryMonths.find(f => f.xAxisLabel === d.xAxisLabel);
-
-  if (isAnomaly || isGhost || isFactory) {
+  if (d.cumulativeOutput > d.cumulativeInput) {
     return (
       <ReferenceArea
         key={i}
         x1={d.xAxisLabel}
         x2={d.xAxisLabel}
         stroke="none"
-        fill={
-          isFactory
-            ? "rgba(220,38,38,0.35)"
-            : isGhost
-            ? "rgba(234,179,8,0.35)"
-            : "rgba(239,68,68,0.25)"
-        }
+        fill="rgba(239,68,68,0.15)"
       />
     );
   }
-
   return null;
 })}
     <ReferenceArea
