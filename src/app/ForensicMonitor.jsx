@@ -11,6 +11,7 @@ import TopRiskEntities from "./TopRiskEntities";
 import SankeyFlow from "./SankeyFlow";
 import RiskRanking from "./RiskRanking";
 import OriginDestinationPanel from "./OriginDestinationPanel";
+import { LabelList } from "recharts";
 
 export default function ForensicEngineV3() {
   const [data, setData] = useState([]);
@@ -230,7 +231,25 @@ const anomalies = useMemo(() => {
 const aiSummary = useMemo(() => {
   if (!processedData.length) return "Upload data to generate forensic insight.";
 
+   const illicitScore = useMemo(() => {
+  if (!processedData.length) return 0;
+
   const latest = processedData[processedData.length - 1];
+
+  let score = 0;
+
+  if (latest.stampGap > 1_000_000) score += 40;
+  else if (latest.stampGap > 250_000) score += 25;
+  else if (latest.stampGap > 50_000) score += 10;
+
+  if (latest.cumulativeOutput > latest.cumulativeInput * 1.1) score += 35;
+
+  if (anomalies.length > 2) score += 15;
+
+  if (latest.pdi < 20) score += 10;
+
+  return Math.min(100, score);
+}, [processedData, anomalies]);
 
   const gap = latest.stampGap;
   const integrity =
@@ -246,7 +265,7 @@ const aiSummary = useMemo(() => {
       : "stable";
 
   const anomalyCount = anomalies.length;
-
+  
   // 🔥 Narrative Logic
   let riskLevel = "LOW RISK";
   if (gap > 1_000_000 || integrity > 110) riskLevel = "CRITICAL";
@@ -507,8 +526,36 @@ const benford = useMemo(() => {
 
     return <circle cx={cx} cy={cy} r={3} fill="#ef4444" />;
   }}
-/>
-      
+>
+  <LabelList
+    dataKey="outflow"
+    content={(props) => {
+      const { x, y, value, index } = props;
+      const d = processedData[index];
+
+      const prev = processedData[index - 1];
+      if (!prev) return null;
+
+      const spike = anomalies.find(a => a.xAxisLabel === d.xAxisLabel);
+      if (!spike) return null;
+
+      const pct = Math.round(((d.outflow - prev.outflow) / prev.outflow) * 100);
+
+      return (
+        <text
+          x={x}
+          y={y - 12}
+          fill="#facc15"
+          fontSize={10}
+          textAnchor="middle"
+        >
+          +{pct}% Export Spike – {d.xAxisLabel}
+        </text>
+      );
+    }}
+  />
+</Line>
+       
       </ComposedChart>
     </ResponsiveContainer>
   </div>   {/* ✅ THIS WAS MISSING */}
@@ -516,26 +563,6 @@ const benford = useMemo(() => {
 <p className="text-sm text-slate-200 mt-4 leading-relaxed whitespace-pre-line font-medium">
   {aiSummary}
 </p>
-
-  const illicitScore = useMemo(() => {
-  if (!processedData.length) return 0;
-
-  const latest = processedData[processedData.length - 1];
-
-  let score = 0;
-
-  if (latest.stampGap > 1_000_000) score += 40;
-  else if (latest.stampGap > 250_000) score += 25;
-  else if (latest.stampGap > 50_000) score += 10;
-
-  if (latest.cumulativeOutput > latest.cumulativeInput * 1.1) score += 35;
-
-  if (anomalies.length > 2) score += 15;
-
-  if (latest.pdi < 20) score += 10;
-
-  return Math.min(100, score);
-}, [processedData, anomalies]);
 <div className="mt-5">
   <p className="text-xs text-slate-400 uppercase tracking-widest">
     Illicit Production Probability
