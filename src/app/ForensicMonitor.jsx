@@ -77,8 +77,10 @@ exportUnit: (r["Cigarette Unit"] || "KG").toUpperCase(),
     console.error("Fetch error:", err);
   }
 };
- const processedData = useMemo(() => {
+const processedData = useMemo(() => {
   if (!data || data.length === 0) return [];
+
+  const KG_PER_STICK = 0.0007;
 
   const n = (val) => {
     if (!val) return 0;
@@ -86,100 +88,100 @@ exportUnit: (r["Cigarette Unit"] || "KG").toUpperCase(),
     return isNaN(parsed) ? 0 : Math.abs(parsed);
   };
 
-  const monthOrder = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
-
-  // 🔥 1. GROUP BY MONTH WITHOUT LOSING ENTITY DATA
-const grouped = {};
-data.forEach(d => {
-  // Use entity + month + year to ensure we don't accidentally merge everything into one month
- const key = `${d.entity}-${d.month}-${d.year}`;
-  
-if (!grouped[key]) {
-  grouped[key] = {
-    month: d.month,
-    year: d.year,
-    entity: d.entity,
-    origin: d.origin,
-    dest: d.dest,
-    tobacco: 0,
-    tow: 0,
-    paper: 0,
-    filter: 0,
-    inventoryPool: 0,
-    exports: 0
+  const monthOrder = {
+    jan:1,feb:2,mar:3,apr:4,may:5,jun:6,
+    jul:7,aug:8,sep:9,oct:10,nov:11,dec:12
   };
-}
 
-grouped[key].tobacco += n(d.tobacco);
-grouped[key].tow += n(d.tow);
-grouped[key].paper += n(d.paper);
-grouped[key].filter += n(d.filter);
-grouped[key].inventoryPool += n(d.inventoryPool);
-grouped[key].exports += n(d.exports);
-});
+  // GROUP MULTIPLE ROWS PER MONTH
+  const grouped = {};
 
-  const sorted = Object.values(grouped).sort((a,b) => {
-    const yA = +a.year || 0, yB = +b.year || 0;
+  data.forEach(d => {
+    const key = `${d.entity}-${d.month}-${d.year}`;
+
+    if (!grouped[key]) {
+      grouped[key] = {
+        month: d.month,
+        year: d.year,
+        entity: d.entity,
+        origin: d.origin,
+        dest: d.dest,
+        tobacco: 0,
+        exports: 0
+      };
+    }
+
+    grouped[key].tobacco += n(d.tobacco);
+    grouped[key].exports += n(d.exports);
+  });
+
+  const sorted = Object.values(grouped).sort((a,b)=>{
+    const yA = +a.year || 0;
+    const yB = +b.year || 0;
     const mA = monthOrder[(a.month||"").toLowerCase()] || 0;
     const mB = monthOrder[(b.month||"").toLowerCase()] || 0;
     return yA !== yB ? yA - yB : mA - mB;
   });
 
-  let invPool = 0;
-  let cumOut = 0;
+  let cumulativeInputSticks = 0;
+  let cumulativeOutputSticks = 0;
 
   return sorted.map((d) => {
-    const eff = (100 - wastage) / 100;
-    
-    // ✅ CORE MATH (Using Aggregated Values)
-const KG_PER_STICK = 0.0007;
 
-// ✅ Tobacco-only production model
-const tobaccoKG = d.tobacco;
+    const efficiency = (100 - wastage) / 100;
 
-const inputCapacity = (tobaccoKG * eff) / KG_PER_STICK;
+    // Production capacity
+    const monthlyCapacitySticks =
+      (d.tobacco * efficiency) / KG_PER_STICK;
 
-invPool = invPool + inputCapacity - (invPool * 0.02);
+    cumulativeInputSticks =
+      cumulativeInputSticks + monthlyCapacitySticks -
+      (cumulativeInputSticks * 0.02); // drying loss
 
-const KG_PER_STICK = 0.0007;
+    // Export conversion
+    const exportsSticks = d.exports / KG_PER_STICK;
 
-// ✅ ALWAYS treat raw CSV as KG
-const exportKG = d.exports;
+    cumulativeOutputSticks += exportsSticks;
 
-// ✅ Convert ONCE → sticks
-const exportsInSticks = exportKG / KG_PER_STICK;
+    const stampGap =
+      Math.abs(cumulativeOutputSticks - cumulativeInputSticks);
 
-// ✅ accumulate in sticks (for model integrity)
-cumOut += exportsInSticks;
+    const pdi =
+      cumulativeInputSticks > 0
+        ? ((cumulativeInputSticks - cumulativeOutputSticks) /
+           cumulativeInputSticks) * 100
+        : 0;
 
-cumOut += exportsInSticks;
-
-    // ✅ BENFORD (Fixed Digit Extraction)
-    const firstDigit = d.exports > 0 ? parseInt(String(Math.floor(d.exports))[0]) : 0;
-
-    // ✅ RE-ESTABLISH MISSING ENTERPRISE KEYS
-    const pdi = invPool > 0 ? ((invPool - cumOut) / invPool) * 100 : 0;
-   const stampGap = Math.abs(cumOut - invPool);
-    const transitRiskScore = d.exports > (invPool * 1.1) ? 85 : 15;
+    const firstDigit =
+      d.exports > 0
+        ? parseInt(String(Math.floor(d.exports))[0])
+        : 0;
 
     return {
       ...d,
+
       xAxisLabel: `${(d.month || "").substring(0,3)} ${d.year}`,
-      cumulativeInput: Math.round(invPool),
-      cumulativeOutput: Math.round(cumOut),
-inventoryPool: Math.round(invPool),
-tobaccoInput: Math.round(d.tobacco),
-monthlyCapacity: Math.round(inputCapacity),
-      outflow: Math.round(exportsInSticks), // sticks (for chart)
-exportsKG: Math.round(exportKG),      // kg (truth source)
+
+      // ORIGINAL KG VALUES
+      tobaccoInputKG: Math.round(d.tobacco),
+      exportsKG: Math.round(d.exports),
+
+      // STICK MODEL
+      monthlyCapacity: Math.round(monthlyCapacitySticks),
+      outflow: Math.round(exportsSticks),
+
+      cumulativeInput: Math.round(cumulativeInputSticks),
+      cumulativeOutput: Math.round(cumulativeOutputSticks),
+
       stampGap: Math.round(stampGap),
       pdi: Math.round(pdi),
-      transitRiskScore,
       firstDigit
     };
-  });
-}, [data, wastage]);
 
+  });
+
+}, [data, wastage]);
+  
   // 🔥 SANKEY FLOW BUILDER (Origin → Entity → Destination)
 const sankeyData = useMemo(() => {
   if (!data || data.length === 0) return { nodes: [], links: [] };
@@ -510,19 +512,19 @@ const benford = useMemo(() => {
               <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-xs">
                 <p className="font-bold text-emerald-400 mb-2">{d.xAxisLabel}</p>
 
-                <p>🟢 Tobacco Input (KG): {formatNumber(d.tobaccoInput)}</p>
-                <p>🟢 Modeled Capacity (sticks): {formatNumber(d.monthlyCapacity)}</p>
+<p>🟢 Tobacco Input: {formatNumber(d.tobaccoInputKG)} KG</p>
+<p>🟢 Capacity: {formatNumber(d.monthlyCapacity)} sticks</p>
 
-                <div className="border-t border-slate-700 my-2"></div>
+<div className="border-t border-slate-700 my-2"></div>
 
-                <p>🔴 Exports (KG): {formatNumber(d.exportsKG)}</p>
-                <p>🔴 Equivalent Sticks: {formatNumber(d.outflow)}</p>
+<p>🔴 Exports: {formatNumber(d.exportsKG)} KG</p>
+<p>🔴 Stick Equivalent: {formatNumber(d.outflow)}</p>
 
-                <div className="border-t border-slate-700 my-2"></div>
+<div className="border-t border-slate-700 my-2"></div>
 
-                <p className="text-red-400">
-                  Gap: {formatNumber(d.stampGap)} sticks
-                </p>
+<p className="text-red-400">
+Gap: {formatNumber(d.stampGap)} sticks
+</p>
 
                 <p className="text-yellow-400">
                   Efficiency: {(100 - wastage).toFixed(1)}%
@@ -550,7 +552,7 @@ const benford = useMemo(() => {
 })}
         <Area
   name="Capacity"
-  dataKey={unitView === "kg" ? "inventoryPool" : "cumulativeInput"}
+  dataKey={unitView === "kg" ? "tobaccoInputKG" : "cumulativeInput"}
   fill="#10b981"
   fillOpacity={0.2}
   stroke="#10b981"
